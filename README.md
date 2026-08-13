@@ -168,10 +168,6 @@ and computing the numbers in Python, then asking the LLM only to phrase them.
 
 ---
 
-The two knowledge graphs:
-
-<img width="1536" height="1024" alt="Future Dual Knowledge Graph" src="https://github.com/user-attachments/assets/0ff806a5-fc2e-4363-a88b-8110c20bdaa1" />
-
 Deployment config lives in [`render.yaml`](render.yaml). The frontend sets a
 relative `NEXT_PUBLIC_API_BASE=/api` and proxies `/api/*` to the backend through
 a Next rewrite, so the browser only ever talks to one origin and CORS never
