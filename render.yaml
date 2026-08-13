@@ -62,14 +62,17 @@ services:
       # other shape for the initial password.
       - key: NEO4J_AUTH
         sync: false
-      # Modest heap/pagecache: this graph is ~240 nodes and ~600 edges, and the
-      # starter instance is small. Defaults would over-reserve and OOM.
+      # Starter is a 512 MB instance, and Neo4j refuses to start at all when
+      # heap.max + pagecache exceeds physical memory ("Invalid memory
+      # configuration - exceeds physical memory", exit 3). These must therefore
+      # leave headroom for the JVM itself: 256 + 64 = 320 MB. That is ample for
+      # ~240 nodes and ~600 edges, which fit in page cache many times over.
       - key: NEO4J_server_memory_heap_initial__size
-        value: 256m
-      - key: NEO4J_server_memory_heap_max__size
-        value: 512m
-      - key: NEO4J_server_memory_pagecache_size
         value: 128m
+      - key: NEO4J_server_memory_heap_max__size
+        value: 256m
+      - key: NEO4J_server_memory_pagecache_size
+        value: 64m
       # Bind Bolt on all interfaces so the private network can reach it. The
       # HTTP connector stays on its default and is NOT exposed publicly: a
       # private service has no public URL, and /graph is the intended
