@@ -213,6 +213,7 @@ class Neo4jGraphRepository(_Neo4jExplorerMixin):
         exercises_path: Path,
         member_context_path: Path,
         ontology: Ontology | None = None,
+        connect_timeout_seconds: float | None = None,
     ) -> Neo4jGraphRepository:
         ontology = ontology or get_ontology()
         projection = KnowledgeGraph()
@@ -227,7 +228,13 @@ class Neo4jGraphRepository(_Neo4jExplorerMixin):
             exercise_name_index=build_exercise_name_index(exercises),
         )
 
-        driver = GraphDatabase.driver(uri, auth=(user, password))
+        options: dict[str, Any] = {}
+        if connect_timeout_seconds:
+            # Bounded per attempt: the caller owns the retry policy, so a
+            # single unreachable host must not consume the whole budget.
+            options["connection_timeout"] = connect_timeout_seconds
+            options["max_transaction_retry_time"] = connect_timeout_seconds
+        driver = GraphDatabase.driver(uri, auth=(user, password), **options)
         driver.verify_connectivity()
         return cls(
             driver, database, exercises, {context.profile.id: context}, ontology, projection
@@ -427,6 +434,26 @@ class Neo4jGraphRepository(_Neo4jExplorerMixin):
     def exercise_provenance(self, exercise_id: str) -> dict[str, Any]:
         rows = self._read(q.EXERCISE_PROVENANCE, exercise_key=m.exercise_key(exercise_id))
         return rows[0] if rows else {}
+
+    # --- seed marker ------------------------------------------------------
+    #
+    # Two named operations rather than a general `execute()`. A generic write
+    # method on the repository would hand every future caller arbitrary Cypher,
+    # which is precisely what the explorer's read-only guarantee rules out.
+
+    def read_seed_version(self) -> str | None:
+        """The seed version recorded in this database, if any."""
+        try:
+            rows = self._read(q.READ_SEED_VERSION)
+        except Exception as exc:  # noqa: BLE001 - an unseeded database has none
+            logger.debug("seed marker unreadable: %s", type(exc).__name__)
+            return None
+        return rows[0].get("version") if rows else None
+
+    def record_seed_version(self, version: str) -> None:
+        """Record the seed version. Idempotent (MERGE on a fixed key)."""
+        with self._driver.session(database=self._database) as session:
+            session.run(q.WRITE_SEED_VERSION, version=version)
 
     def graph(self) -> KnowledgeGraph:
         return self._projection

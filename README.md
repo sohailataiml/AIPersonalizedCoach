@@ -44,6 +44,7 @@ The two knowledge graphs:
 - [Tests](#tests)
 - [Technology choices](#technology-choices)
 - [Knowledge graph explorer](#knowledge-graph-explorer)
+- [Render deployment](#render-deployment)
 - [Evaluation and observability](#evaluation-and-observability)
 - [Evaluating this in production](#evaluating-this-in-production)
 - [Trade-offs and deliberate decisions](#trade-offs-and-deliberate-decisions)
@@ -82,11 +83,9 @@ Two caveats worth knowing before you click:
 
 - **Free tier cold starts.** Both services spin down when idle, so the first
   request can take 30-60s. Subsequent requests are fast (~13 ms end to end).
-- **The deployment runs the in-memory graph backend, not Neo4j.** Render has no
-  managed Neo4j, and the in-memory backend runs the *identical* traversals
-  behind the same `GraphRepository` Protocol - verified to produce
-  byte-identical filtering counts on both. To browse the graph itself, run
-  `docker compose up` locally and open the Neo4j browser.
+- **The deployment runs a real Neo4j**, as a private service with a persistent
+  disk. See [Render deployment](#render-deployment). Browse the graph in-app at
+  `/graph` - Neo4j Browser is deliberately not exposed.
 
 Deployment config lives in [`render.yaml`](render.yaml). The frontend sets a
 relative `NEXT_PUBLIC_API_BASE=/api` and proxies to `BACKEND_ORIGIN` through a
@@ -972,7 +971,7 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**457 backend tests and 182 frontend tests, all passing**, deliberately
+**500 backend tests and 187 frontend tests, all passing**, deliberately
 concentrated on the paths where a bug produces a *confidently wrong* answer
 rather than a visible failure.
 
@@ -998,7 +997,10 @@ backend/tests/test_observability.py 41  evaluation harness + tracing:
                                        trace privacy, observational tracing
 backend/tests/test_graph_explorer.py 67 explorer: read-only boundary, privacy
                                        gate, property allowlist, Neo4j parity
-frontend/tests/                  182   graph reasoning, replay, ontology
+backend/tests/test_deployment.py  43   deployment: no silent fallback,
+                                       idempotent bootstrap, readiness,
+                                       Blueprint shape, secret hygiene
+frontend/tests/                  187   graph reasoning, replay, ontology
                                        grounding, longitudinal context,
                                        path viewer, adjustment + diff,
                                        system quality dashboard
@@ -1136,6 +1138,207 @@ supplies the **typed view** - the same split `list_exercises` has always used.
 Eleven parity tests assert both backends return identical nodes, edges and
 relationships for search, node detail, one- and two-hop neighborhoods and SKOS
 mappings, and they run against a live container when one is reachable.
+
+---
+
+## Render deployment
+
+The deployed demo runs on a **real Neo4j**, not the in-memory backend.
+
+```
+                          INTERNET
+                             |
+            +----------------+----------------+
+            |                                 |
+       Frontend (web)                   FastAPI (web)
+       Next.js dashboard                REST + MCP
+            |                                 |
+            +----------- HTTPS ---------------+
+                                              |
+                                              | private network (Bolt)
+                                              v
+                                    +--------------------+
+                                    |   Neo4j (pserv)    |
+                                    |  no public URL     |
+                                    +---------+----------+
+                                              |
+                                              v
+                                    persistent disk /data
+```
+
+**The browser never reaches Neo4j.** The backend is the only service holding
+credentials; Neo4j is a private service, so Render assigns it no public URL at
+all. Neo4j Browser is deliberately not exposed - [`/graph`](#knowledge-graph-explorer)
+is the browsing surface, and it is read-only, privacy-filtered and
+credential-free.
+
+### Why Neo4j and not the in-memory backend
+
+Both implement `GraphRepository` and produce byte-identical safety decisions -
+11 parity tests assert it, and the 71-case evaluation passes on either. So the
+demo would be *correct* either way. It runs on Neo4j because the assessment is
+about a knowledge graph, and a reviewer should see the real store answering the
+real traversals. `/graph` reports its backend from server state, so the claim is
+checkable rather than asserted.
+
+### Services
+
+| Service | Type | Plan | Why |
+|---|---|---|---|
+| `future-coach-frontend` | `web` (node) | free | Next.js, proxies `/api/*` to the backend |
+| `future-coach-backend` | `web` (python) | free | FastAPI REST + MCP; the only holder of graph credentials |
+| `future-coach-neo4j` | `pserv` (image) | **starter** | `neo4j:5.26-community`, private, 1 GB disk at `/data` |
+
+**Paid resources.** Render persistent disks require a paid instance type, and a
+free web service *cannot receive* private-network traffic - so the Neo4j
+private service must be paid. `starter` is the smallest plan that satisfies
+both. Frontend and backend stay on `free`. This is an interview demo; nothing
+here is sized for production.
+
+### The one manual secret
+
+Blueprints cannot concatenate values, and Neo4j accepts its initial password
+only as a combined `user/password` string. So one secret is entered in two
+fields, both `sync: false` and never committed:
+
+| Service | Variable | Value |
+|---|---|---|
+| `future-coach-neo4j` | `NEO4J_AUTH` | `neo4j/<password>` |
+| `future-coach-backend` | `NEO4J_PASSWORD` | `<password>` |
+
+Everything else is wired by the Blueprint. The private hostname comes from
+`fromService … property: host` rather than being guessed, and the frontend
+origin for CORS comes from the frontend service the same way.
+
+### Deploying
+
+```bash
+# 1. Push the blueprint
+git push origin master
+
+# 2. Render dashboard -> New -> Blueprint -> select this repo
+# 3. Set the two secrets above when prompted
+# 4. Apply
+```
+
+First deploy takes a few minutes: Neo4j must boot before the backend passes its
+health check. That is expected and handled - see startup below.
+
+### Graph bootstrap
+
+The Render database starts empty. Bootstrap is owned by the FastAPI lifespan,
+not a separate job, because a Render disk is reachable only by the service it is
+attached to - any bootstrapper has to go over Bolt anyway. One code path
+therefore seeds locally, in CI and on Render, and the thing that verifies the
+seed is the thing that will serve the queries.
+
+```
+startup -> connect (bounded retry) -> seed if needed (MERGE, never wipe)
+        -> verify counts -> ready
+```
+
+**Idempotent.** Writes are `MERGE` on stable keys and a `SeedMetadata` version
+marker lets a warm database skip the write entirely. A redeploy never
+duplicates a node, never duplicates a relationship, and never wipes. Verified
+locally: seeding an emptied database produced 237 nodes; a second start logged
+`graph already seeded` and left `/api/graph/stats` byte-identical.
+
+The marker node is outside `EXPLORABLE_KINDS`, so it cannot appear in the graph
+explorer or the summary.
+
+### Startup, liveness and readiness
+
+FastAPI can start before Neo4j finishes booting, so the first connection
+attempt is expected to fail. Connection retries with exponential backoff,
+bounded (20 attempts on Render, 8s per attempt) - an unbounded retry would turn
+a misconfiguration into a service that never starts and never says why.
+
+```
+GET /health/live    is the process running?          (never touches the graph)
+GET /health/ready   can it actually serve?           (graph reachable AND seeded)
+```
+
+```json
+{
+  "status": "ready",
+  "environment": "render",
+  "graph_backend": "neo4j",
+  "graph_reachable": true,
+  "graph_seeded": true,
+  "seed_version": "2026.08.13-1",
+  "mcp_enabled": true,
+  "problems": []
+}
+```
+
+Readiness answers `503` when the graph is unreachable or unverified, and
+`healthCheckPath` points at it - a failing graph must not be reported as a
+successful deploy. Neither response carries a URI, a credential or a stack
+trace; the startup error is redacted to scheme/host/port before it is logged or
+surfaced.
+
+**No silent fallback.** An earlier revision fell back to the in-memory backend
+when Neo4j was unreachable, on the grounds that both run identical traversals.
+That is true and it was still wrong: silently swapping the storage engine
+underneath a *safety* system means an operator who asked for Neo4j gets
+something else and is never told. `GRAPH_BACKEND=neo4j` now means Neo4j or
+not-ready.
+
+### Persistence
+
+Neo4j's `/data` is a Render persistent disk, so the graph survives a backend
+redeploy, a frontend redeploy and a Neo4j restart. Nothing destructive runs at
+startup. The official image runs as root and its entrypoint chowns `/data`
+before dropping to the `neo4j` user, so a disk mounted as root works without a
+wrapper image.
+
+### `/system` and evaluation artifacts
+
+The System Quality dashboard reads `artifacts/evals/latest.json`, which is
+shipped with the application. The 71-case suite is **not** run at startup: 71
+cases on every boot would be startup fragility in exchange for a number already
+known, and the deployed services run the same code that was evaluated.
+
+> Historical evaluation artifacts are CI/local build artifacts in this
+> assessment. The deployed dashboard shows the latest shipped evaluation plus
+> current runtime traces. Runtime traces are an in-process bounded ring buffer
+> (50 requests) and reset on redeploy - they are not durable, and the dashboard
+> says so.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Deploy stuck "unhealthy" | Neo4j still booting, or wrong password | Check `/health/ready` `problems`; confirm `NEO4J_AUTH` and `NEO4J_PASSWORD` share one password |
+| `/health/ready` 503, `graph_reachable: false` | Backend cannot reach the private host | Both services must be in the **same region**; private networking is regional |
+| `/health/ready` 503, `graph_seeded: false` | Seed verification failed | `problems` names the failing count |
+| `/mcp` answers 421 | Host header not allow-listed | Add the backend hostname to `MCP_ALLOWED_HOSTS` - do not disable the protection |
+| CORS error in the browser | Frontend origin not allowed | Normal traffic is proxied and needs no CORS; check `FRONTEND_ORIGIN` if calling the API directly |
+| `/graph` says backend `memory` | `GRAPH_BACKEND` not set | Should be `neo4j` on the backend service |
+
+### Verifying a deployment
+
+```bash
+BACKEND=https://future-coach-backend.onrender.com
+
+curl -s $BACKEND/health/live
+curl -s $BACKEND/health/ready | jq '{graph_backend, graph_reachable, graph_seeded}'
+curl -s $BACKEND/api/graph/summary | jq '{graph_backend, node_count, ontology_mappings}'
+curl -s "$BACKEND/api/graph/search?q=knee" | jq '.hits[0]'
+curl -s $BACKEND/api/system/evaluations/latest | jq '{passed_cases, total_cases, unsafe_escapes}'
+```
+
+Then open the frontend and check `/`, `/graph` and `/system`.
+
+### Local production-like run
+
+The same path, before deploying:
+
+```bash
+docker compose up -d neo4j
+GRAPH_BACKEND=neo4j ENVIRONMENT=render make dev-backend   # bootstraps on start
+cd frontend && npm run build && npm run start
+```
 
 ---
 

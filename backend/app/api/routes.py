@@ -60,11 +60,17 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     services = get_services()
+    bootstrap = services.bootstrap
+    stats = services.repository.stats()
     return HealthResponse(
         status="ok",
         graph_backend=services.backend,
         llm_provider=getattr(services.llm, "name", "unknown"),
-        graph_stats=services.repository.stats(),
+        graph_stats=stats,
+        environment=services.settings.environment,
+        graph_seeded=bool(bootstrap and bootstrap.seeded),
+        seed_version=bootstrap.seed_version if bootstrap else None,
+        ontology_mappings=stats.get("node:OntologyConcept", 0),
     )
 
 

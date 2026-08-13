@@ -1490,3 +1490,28 @@ better than a force simulation that settles differently each render.
 Deep links: `/graph?node=anatomy:knee` and
 `/graph?mode=safety&exercise=<id>&name=<label>`, the latter linked from the
 Safety & Provenance Inspector.
+
+
+---
+
+## Phase 6 - Render deployment with real Neo4j
+
+| Item | Location |
+|---|---|
+| Blueprint (3 services, disk, secrets) | `render.yaml` |
+| Connect retry + idempotent bootstrap | `backend/app/graph/bootstrap.py` |
+| Seed marker queries | `backend/app/graph/queries.py`, `neo4j_repository.py` |
+| Composition root (no fallback) | `backend/app/api/deps.py` |
+| Liveness / readiness | `backend/app/main.py`, `app/api/schemas.py` |
+| Deployment config | `backend/app/core/config.py`, `.env.example` |
+| Tests | `backend/tests/test_deployment.py` (43), `frontend/tests/deployment.test.tsx` (5) |
+
+Verified locally against a real Neo4j: emptied the database, cold-started the
+backend (seeded 237 nodes, readiness `ready`), restarted (logged `graph already
+seeded`, stats unchanged), then ran the full functional gate plus the 71-case
+evaluation and all four demo scenarios in `GRAPH_BACKEND=neo4j` mode with
+identical results to memory mode.
+
+Not deployed to Render: no Render API key or CLI is available in this
+environment. The Blueprint, secrets and verification commands are documented in
+the README.

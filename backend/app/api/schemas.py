@@ -176,3 +176,35 @@ class HealthResponse(BaseModel):
     graph_backend: str
     llm_provider: str
     graph_stats: dict[str, int] = Field(default_factory=dict)
+    # Additive deployment facts for the Technical Details panel. Deliberately
+    # no hostname, URI or credential - "which environment and is the graph
+    # seeded" is what an operator needs; where it lives is not.
+    environment: str = "local"
+    graph_seeded: bool = True
+    seed_version: str | None = None
+    ontology_mappings: int = 0
+
+
+class LivenessResponse(BaseModel):
+    """Is the process running? Deliberately independent of the graph."""
+
+    status: str = "alive"
+    version: str | None = None
+
+
+class ReadinessResponse(BaseModel):
+    """Can the service actually serve?
+
+    Reports state, never connection detail: no URI, no credential, no stack
+    trace. ``problems`` carries verification messages (counts) and, at worst, a
+    startup error already redacted to scheme/host/port.
+    """
+
+    status: str
+    environment: str
+    graph_backend: str
+    graph_reachable: bool
+    graph_seeded: bool
+    seed_version: str | None = None
+    mcp_enabled: bool = True
+    problems: list[str] = Field(default_factory=list)

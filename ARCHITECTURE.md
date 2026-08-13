@@ -1269,3 +1269,61 @@ was seeded and what the application reasons on surfaces as a parity failure.
 * Ontology mode renders the Phase 1 mapping set through `GroundingDetail`.
 
 No provenance logic, safety logic or grounding data is re-implemented here.
+
+
+---
+
+## 14. Render deployment
+
+```text
+                          INTERNET
+                             |
+            +----------------+----------------+
+            |                                 |
+       Frontend (web, node)            Backend (web, python)
+       Next.js                         FastAPI REST + /mcp
+            |                                 |
+            +----------- HTTPS ---------------+
+                                              |
+                                              | private network, Bolt 7687
+                                              v
+                                    Neo4j (pserv, image)
+                                    neo4j:5.26-community
+                                              |
+                                              v
+                                    persistent disk /data
+```
+
+### 14.1 Trust boundary
+
+The backend is the only service with graph credentials. Neo4j is a private
+service and receives no public URL; port 7687 is never reachable from a
+browser. The read-only Knowledge Graph Explorer at `/graph` replaces Neo4j
+Browser as the inspection surface.
+
+### 14.2 Backend selection
+
+`GRAPH_BACKEND=neo4j` selects `Neo4jGraphRepository` for every consumer -
+workout generation, SafetyEngine, provenance, graph reasoning, explorer, MCP
+tools and Copilot - because all of them resolve through the one composition
+root. There is no per-feature backend choice and, in neo4j mode, no fallback:
+an unreachable graph makes the service unready rather than changing the safety
+implementation underneath it.
+
+### 14.3 Bootstrap ownership
+
+FastAPI's lifespan owns it. A Render disk is reachable only by its own service,
+so any bootstrapper must go over Bolt; putting it in the lifespan means one
+code path seeds locally, in CI and on Render, and the component that verifies
+the seed is the one that will serve the queries.
+
+Idempotence comes from `MERGE` on stable keys plus a `SeedMetadata` version
+marker (outside `EXPLORABLE_KINDS`, so invisible to the explorer). Bootstrap is
+never destructive - `wipe=False` always.
+
+### 14.4 Health model
+
+`/health/live` reports process liveness and never touches the graph.
+`/health/ready` reports reachability and seed verification and answers 503 when
+either fails; it is the configured `healthCheckPath`. Neither exposes a URI,
+credential or stack trace.

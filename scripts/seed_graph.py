@@ -20,50 +20,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from app.core.config import get_settings  # noqa: E402
+from app.graph.bootstrap import verify  # noqa: E402
 from app.graph.memory_repository import InMemoryGraphRepository  # noqa: E402
-from app.ingestion.exercises import load_exercises  # noqa: E402
 from app.ontology.loader import get_ontology  # noqa: E402
-
-EXPECTED = {
-    "exercises": 50,
-    "muscles": 19,
-    "movement_patterns": 36,
-    "equipment": 32,
-    "catalog_joints": 9,
-}
-
-
-def verify(stats: dict[str, int], exercises_path: Path) -> list[str]:
-    problems: list[str] = []
-
-    def check(key: str, expected: int) -> None:
-        actual = stats.get(key, 0)
-        if actual != expected:
-            problems.append(f"{key}: expected {expected}, found {actual}")
-
-    check("node:Exercise", EXPECTED["exercises"])
-    check("node:Muscle", EXPECTED["muscles"])
-    check("node:MovementPattern", EXPECTED["movement_patterns"])
-    check("node:Equipment", EXPECTED["equipment"])
-
-    # The 9 catalog joints must all be represented, though the curated anatomy
-    # hierarchy adds more regions (e.g. patellofemoral joint) on purpose.
-    catalog_joints = {
-        joint for exercise in load_exercises(exercises_path) for joint in exercise.joints_loaded
-    }
-    if len(catalog_joints) != EXPECTED["catalog_joints"]:
-        problems.append(
-            f"catalog joints: expected {EXPECTED['catalog_joints']}, found {len(catalog_joints)}"
-        )
-    if stats.get("node:AnatomicalRegion", 0) < EXPECTED["catalog_joints"]:
-        problems.append("AnatomicalRegion count is below the number of catalog joints")
-
-    for required_edge in ("edge:STRESSES", "edge:REQUIRES", "edge:PART_OF", "edge:CONTRAINDICATES"):
-        if stats.get(required_edge, 0) == 0:
-            problems.append(f"{required_edge}: no edges created")
-
-    return problems
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed the knowledge graph")

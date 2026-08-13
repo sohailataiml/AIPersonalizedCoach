@@ -776,4 +776,13 @@ export interface HealthResponse {
   graph_backend: string;
   llm_provider: string;
   graph_stats: Record<string, number>;
+  /**
+   * Deployment facts. Optional so an older backend still parses. Deliberately
+   * no hostname, URI or credential — the client is told *which* environment
+   * and whether the graph is seeded, never where it lives.
+   */
+  environment?: string;
+  graph_seeded?: boolean;
+  seed_version?: string | null;
+  ontology_mappings?: number;
 }

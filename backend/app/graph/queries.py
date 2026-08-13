@@ -201,3 +201,20 @@ EXPLORER_DEGREE = """
 MATCH (n:GraphNode {key: $key})-[r]-()
 RETURN count(r) AS degree
 """
+
+# --- seed marker -------------------------------------------------------------
+# A single node recording which seed version wrote this database, so a warm
+# deploy can skip bootstrap instead of re-merging ~800 elements. Labelled
+# SeedMetadata, which is outside EXPLORABLE_KINDS, so it can never surface in
+# the Knowledge Graph Explorer or the graph summary.
+
+READ_SEED_VERSION = """
+MATCH (s:SeedMetadata {key: 'seed'})
+RETURN s.version AS version
+"""
+
+WRITE_SEED_VERSION = """
+MERGE (s:SeedMetadata {key: 'seed'})
+SET s.version = $version, s.updated_at = timestamp()
+RETURN s.version AS version
+"""

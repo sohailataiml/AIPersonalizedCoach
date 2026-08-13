@@ -1,44 +1,139 @@
-# Render blueprint.
+# Render Blueprint - production demo with a REAL Neo4j.
 #
-# Two services. Neo4j is intentionally not deployed: Render has no managed Neo4j,
-# and the in-memory graph backend runs the *identical* traversals behind the same
-# GraphRepository Protocol - verified to produce byte-identical filtering counts
-# on both backends. The deployed demo is therefore fully functional, and a
-# reviewer who wants to browse the graph itself can run `docker compose up`
-# locally.
+#   Browser  --HTTPS-->  Frontend (web)
+#   Browser  --HTTPS-->  Backend  (web, FastAPI REST + MCP)
+#   Backend  --Bolt---->  Neo4j   (pserv, private network only)
+#                            |
+#                            +--> persistent disk at /data
 #
-# The LLM defaults to the deterministic offline stub, so the deployment needs no
-# API key. Set LLM_PROVIDER + the matching key in the Render dashboard to switch
-# to a real model; nothing about safety changes when you do.
+# The browser never reaches Neo4j. The backend is the only service that holds
+# credentials, and Neo4j has no public URL at all - it is a private service, so
+# Render does not assign it one.
+#
+# Why Neo4j here rather than the in-memory backend: both implement the same
+# GraphRepository Protocol and produce byte-identical safety decisions (11
+# parity tests assert it), so the demo would be *correct* either way. It is
+# deployed on Neo4j because the assessment is about a knowledge graph, and a
+# reviewer should be able to see the real store answering the real traversals -
+# including in the /graph explorer, which reports its backend from server state.
+#
+# ---------------------------------------------------------------------------
+# PAID RESOURCES (see README "Render deployment"):
+#   Render persistent disks require a paid instance type, and a free web
+#   service cannot RECEIVE private network traffic. The Neo4j private service
+#   therefore runs on `starter`. Frontend and backend stay on `free`.
+#
+# ONE MANUAL SECRET (see README):
+#   NEO4J_AUTH      on future-coach-neo4j   = neo4j/<password>
+#   NEO4J_PASSWORD  on future-coach-backend = <password>
+#   Neo4j only accepts its initial password as the combined "user/password"
+#   string, and Blueprints cannot concatenate values, so the same secret is
+#   entered in two fields. Both are `sync: false` and never committed.
+# ---------------------------------------------------------------------------
 
 services:
+  # --- Neo4j: private, persistent, never public ----------------------------
+  - type: pserv
+    name: future-coach-neo4j
+    runtime: image
+    plan: starter          # required: disks and private-network ingress are paid
+    region: oregon
+    image:
+      # Pinned, not `latest`. 5.26 is the Neo4j 5 LTS (supported to June 2028)
+      # and is the exact tag already validated locally by docker-compose, the
+      # 11 Memory/Neo4j parity tests and the 71-case evaluation. The image runs
+      # as root and its entrypoint chowns /data and /logs before dropping to
+      # the neo4j user, so a Render disk mounted as root just works.
+      url: docker.io/library/neo4j:5.26-community
+    disk:
+      name: neo4j-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      # The one manual secret. Format is "user/password" - Neo4j accepts no
+      # other shape for the initial password.
+      - key: NEO4J_AUTH
+        sync: false
+      # Modest heap/pagecache: this graph is ~240 nodes and ~600 edges, and the
+      # starter instance is small. Defaults would over-reserve and OOM.
+      - key: NEO4J_server_memory_heap_initial__size
+        value: 256m
+      - key: NEO4J_server_memory_heap_max__size
+        value: 512m
+      - key: NEO4J_server_memory_pagecache_size
+        value: 128m
+      # Bind Bolt on all interfaces so the private network can reach it. The
+      # HTTP connector stays on its default and is NOT exposed publicly: a
+      # private service has no public URL, and /graph is the intended
+      # browsing surface rather than Neo4j Browser.
+      - key: NEO4J_server_bolt_listen__address
+        value: 0.0.0.0:7687
+      - key: NEO4J_server_default__listen__address
+        value: 0.0.0.0
+
+  # --- FastAPI: REST + MCP, the only holder of graph credentials -----------
   - type: web
     name: future-coach-backend
     runtime: python
     plan: free
-    region: oregon
+    region: oregon          # must match Neo4j: the private network is regional
     branch: master
     rootDir: .
     buildCommand: pip install -e backend
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend
-    healthCheckPath: /api/health
+    # Readiness, not liveness: the deploy is only healthy once Neo4j is
+    # reachable AND the graph verifies. A failing graph must not be reported as
+    # a successful deploy.
+    healthCheckPath: /health/ready
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
       - key: PYTHONPATH
         value: backend
+      - key: ENVIRONMENT
+        value: render
+      # The whole point of this Blueprint.
       - key: GRAPH_BACKEND
-        value: memory
+        value: neo4j
+      # Private DNS, resolved by Render rather than guessed.
+      - key: NEO4J_HOST
+        fromService:
+          type: pserv
+          name: future-coach-neo4j
+          property: host
+      - key: NEO4J_PORT
+        value: "7687"
+      - key: NEO4J_USER
+        value: neo4j
+      # The second half of the one manual secret. Must equal the password in
+      # NEO4J_AUTH above.
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: NEO4J_DATABASE
+        value: neo4j
+      # Cold deploys race Neo4j's boot; bounded retry, then readiness fails.
+      - key: NEO4J_CONNECT_ATTEMPTS
+        value: "20"
+      - key: NEO4J_CONNECT_BACKOFF_SECONDS
+        value: "2"
       - key: LLM_PROVIDER
         value: stub
-      # Allow the frontend service to call the API directly if it ever needs to.
-      - key: CORS_ORIGINS
-        sync: false
-      # The MCP transport validates the Host header (DNS-rebinding protection),
-      # so the public hostname has to be listed or /mcp answers 421.
+      # CORS: the deployed frontend origin is appended to the local
+      # development origins. Never "*" - this API allows credentials.
+      - key: FRONTEND_ORIGIN
+        fromService:
+          type: web
+          name: future-coach-frontend
+          property: host
+      # The MCP transport validates the Host header (DNS-rebinding
+      # protection). It stays ON; the deployed hostname is allow-listed
+      # instead of the protection being disabled.
+      - key: MCP_ENABLED
+        value: "true"
       - key: MCP_ALLOWED_HOSTS
         value: '["future-coach-backend.onrender.com"]'
 
+  # --- Next.js dashboard ---------------------------------------------------
   - type: web
     name: future-coach-frontend
     runtime: node
@@ -52,7 +147,9 @@ services:
       - key: NODE_VERSION
         value: "22"
       # Relative base: the Next server proxies /api/* to BACKEND_ORIGIN, so the
-      # browser only ever talks to this origin and CORS never applies.
+      # browser only ever talks to this origin and CORS never applies to normal
+      # traffic. No backend URL, and certainly no graph credential, is baked
+      # into the client bundle.
       - key: NEXT_PUBLIC_API_BASE
         value: /api
       - key: BACKEND_ORIGIN

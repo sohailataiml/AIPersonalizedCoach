@@ -93,10 +93,25 @@ export function TechnicalDetails({
               </>
             ) : null}
             {health ? (
-              <Row
-                label="exercises in graph"
-                value={String(health.graph_stats['node:Exercise'] ?? '—')}
-              />
+              <>
+                <Row
+                  label="exercises in graph"
+                  value={String(health.graph_stats['node:Exercise'] ?? '—')}
+                />
+                {/* Deployment facts, reported by the backend. Deliberately no
+                    hostname, URI or credential: "which environment, is the
+                    graph seeded" is what an operator needs; where it lives is
+                    not. */}
+                <Row label="environment" value={health.environment ?? 'local'} />
+                <Row
+                  label="graph seeded"
+                  value={health.graph_seeded ? 'yes' : 'no'}
+                />
+                <Row
+                  label="ontology mappings"
+                  value={`${health.ontology_mappings ?? 0} verified`}
+                />
+              </>
             ) : null}
           </dl>
         </div>
