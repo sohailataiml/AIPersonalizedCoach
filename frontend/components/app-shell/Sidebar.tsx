@@ -16,6 +16,7 @@ type NavId =
   | 'overview'
   | 'workouts'
   | 'copilot'
+  | 'system'
   | 'members'
   | 'insights'
   | 'library'
@@ -28,6 +29,8 @@ interface NavItem {
   available: boolean;
   /** Scroll target within the single-page dashboard. */
   target?: string;
+  /** A real route, for destinations outside the coach dashboard. */
+  href?: string;
 }
 
 const ICON = 'h-4 w-4';
@@ -72,6 +75,16 @@ const NAV: NavItem[] = [
     icon: <Icon path="M12 3a9 9 0 0 0-9 9v5a2 2 0 0 0 2 2h2v-6H5v-1a7 7 0 0 1 14 0v1h-2v6h2a2 2 0 0 0 2-2v-5a9 9 0 0 0-9-9Z" />,
   },
   {
+    // A developer/operator surface, deliberately outside the coach's daily
+    // workflow: "how is the system performing overall?" rather than "what
+    // happened for this workout?".
+    id: 'system',
+    label: 'Quality',
+    available: true,
+    href: '/system',
+    icon: <Icon path="M12 3l7.5 3.75v5.25c0 4.35-3.1 8.1-7.5 9-4.4-.9-7.5-4.65-7.5-9V6.75L12 3Zm-2.5 8.5 2 2 3.5-3.75" />,
+  },
+  {
     id: 'members',
     label: 'Members',
     available: false,
@@ -97,11 +110,22 @@ const NAV: NavItem[] = [
   },
 ];
 
-export function Sidebar({ coachName = 'Coach Olivia' }: { coachName?: string }) {
-  const [active, setActive] = useState<NavId>('overview');
+export function Sidebar({
+  coachName = 'Coach Olivia',
+  current = 'overview',
+}: {
+  coachName?: string;
+  /** The active destination when the rail is rendered on a real route. */
+  current?: NavId;
+}) {
+  const [active, setActive] = useState<NavId>(current);
 
   function go(item: NavItem) {
     if (!item.available) return;
+    if (item.href) {
+      window.location.href = item.href;
+      return;
+    }
     setActive(item.id);
     if (item.target === 'top') {
       window.scrollTo({ top: 0, behavior: 'smooth' });

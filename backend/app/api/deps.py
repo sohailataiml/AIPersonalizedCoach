@@ -8,7 +8,7 @@ so switching between in-memory and Neo4j changes no safety code at all.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.agents.workout_graph import WorkoutWorkflow
 from app.copilot.service import CopilotService
@@ -18,6 +18,8 @@ from app.graph.repository import GraphRepository
 from app.llm.base import LLMClient
 from app.llm.factory import build_llm_client
 from app.member.trajectory import MemberTrajectoryService
+from app.observability.collector import InstrumentedGraphRepository
+from app.observability.store import TraceStore
 from app.ontology.loader import Ontology, get_ontology
 from app.resolution.resolver import ConceptResolver
 from app.safety.engine import SafetyEngine
@@ -38,6 +40,7 @@ class Services:
     backend: str
     # Optional so a hand-built container (tests) stays valid without it.
     trajectory: MemberTrajectoryService | None = None
+    traces: TraceStore = field(default_factory=TraceStore)
 
     def close(self) -> None:
         closer = getattr(self.repository, "close", None)
@@ -52,6 +55,11 @@ def build_services(settings: Settings | None = None) -> Services:
     settings = settings or get_settings()
     ontology = get_ontology()
     repository, backend = _build_repository(settings, ontology)
+    # A counting pass-through, installed once. It delegates every call
+    # untouched, so safety logic is unchanged by its presence - see
+    # test_observability.py, which asserts identical decisions with and
+    # without it.
+    repository = InstrumentedGraphRepository(repository)
 
     resolver = ConceptResolver.from_ontology(
         ontology,

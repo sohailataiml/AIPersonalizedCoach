@@ -43,7 +43,7 @@ The two knowledge graphs:
 - [Demo scenarios](#demo-scenarios)
 - [Tests](#tests)
 - [Technology choices](#technology-choices)
-- [Observability](#observability)
+- [Evaluation and observability](#evaluation-and-observability)
 - [Evaluating this in production](#evaluating-this-in-production)
 - [Trade-offs and deliberate decisions](#trade-offs-and-deliberate-decisions)
 - [Known limitations](#known-limitations)
@@ -134,7 +134,8 @@ API key in `.env`. Nothing about safety changes when you do — that is the poin
 | `make seed` | Seed + verify the graph from a clean state |
 | `make test` | Backend test suite |
 | `make verify-ontology` | Re-resolve every SNOMED code against NCI EVS (needs network) |
-| `make verify` | Tests, lint, typecheck, production build, demo scenarios |
+| `make eval` | Offline evaluation suite (writes `artifacts/evals/`) |
+| `make verify` | Tests, lint, typecheck, build, ontology audit, evals, demos |
 
 ---
 
@@ -190,8 +191,10 @@ backend/app/
 ├── resolution/    normalizer.py, resolver.py, embeddings.py
 ├── safety/        engine.py, policies.py, ranking.py, validator.py  ← the gate
 ├── agents/        intent.py, workout_graph.py (LangGraph), workout_planner.py
-├── provenance/    builder.py
+├── provenance/    builder.py, graph_trace.py, diff.py
 ├── copilot/       service.py, analytics.py
+├── evaluation/    cases.py (the corpus), runner.py, artifacts.py, adversarial.py
+├── observability/ collector.py (post-hoc traces), store.py (ring buffer)
 └── api/           routes.py, schemas.py, deps.py
 ```
 
@@ -968,7 +971,7 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**349 backend tests and 127 frontend tests, all passing**, deliberately
+**390 backend tests and 156 frontend tests, all passing**, deliberately
 concentrated on the paths where a bug produces a *confidently wrong* answer
 rather than a visible failure.
 
@@ -989,9 +992,13 @@ backend/tests/test_adjustment.py  28   graph-driven adjustment: every change
                                        re-runs safety, nothing is fabricated
 backend/tests/test_copilot*.py         grounding, missing data, chart correctness
 backend/tests/test_mcp_tools.py        MCP parity with a direct engine call
-frontend/tests/                  127   graph reasoning, replay, ontology
+backend/tests/test_observability.py 41  evaluation harness + tracing:
+                                       metric arithmetic, invariant derivation,
+                                       trace privacy, observational tracing
+frontend/tests/                  156   graph reasoning, replay, ontology
                                        grounding, longitudinal context,
-                                       path viewer, adjustment + diff
+                                       path viewer, adjustment + diff,
+                                       system quality dashboard
 ```
 
 Run them with `make test` (backend) and `npm test` in `frontend/`.
@@ -1046,20 +1053,101 @@ three demo scenarios pass on both that resolution and the 0.116.2 floor.
 
 ---
 
-## Observability
+## Evaluation and observability
 
-Each workout request logs a single structured line:
+Two different questions, answered by two different systems, shown side by side
+on the **System Quality** dashboard at `/system` and deliberately never blended:
 
+| | Question | Source |
+|---|---|---|
+| **Offline evaluation** | *"Does the system behave correctly across known scenarios?"* | `artifacts/evals/*.json`, written by `make eval` |
+| **Runtime observability** | *"What happened during this particular request?"* | in-process trace buffer, last 50 requests |
+
+### Offline evaluation
+
+```bash
+make eval                                   # run, print, write an artifact
+python scripts/run_evals.py --json          # machine-readable, for CI
+python scripts/run_evals.py --category safety
 ```
-request_id=c805746c855f member=mbr_01HX9JORDAN resolved=4 unresolved=0
-eligible=18 excluded=32 in_plan=9 rejections=0 total_ms=38.7
-```
 
-Per-node timings are returned in the API response and rendered as a breakdown in
-the provenance inspector. A typical end-to-end request with the stub is **~39 ms**;
-with a real provider, latency is dominated by the single composition call. Secrets
-are never logged, and provider errors log the status code only — never the request
-body, which contains member context.
+Exit code is 0 only when every case passes **and** no unsafe exercise survives
+final validation, so it works as a CI gate.
+
+**71 cases across 8 categories**, all driving the real code paths — safety cases
+run the real engine, validation cases run the real LangGraph workflow with an
+adversarial model, MCP cases call the real tools. A harness that re-implemented
+the logic would measure the harness.
+
+Measured on the current build (`graph.memory`, `llm.stub`):
+
+| Metric | Result |
+|---|---|
+| Concept resolution | **13 / 13** |
+| Hard safety constraints | **11 / 11** |
+| Equipment compliance | **7 / 7** |
+| Explicit exclusions | **6 / 6** |
+| Longitudinal consistency | **10 / 10** |
+| Adjustment constraints | **8 / 8** |
+| Workout validation | **8 / 8** |
+| Copilot / MCP | **8 / 8** |
+| Provenance coverage | **2 / 2** |
+| MCP safety parity | **2 / 2** |
+| Unresolved correctness | **3 / 3** |
+| **Unsafe validation escapes** | **0** |
+
+Latency p50 **14 ms**, p95 **225 ms**, max 1.28 s (the slowest cases run several
+full workflows). Categories are never averaged into one number — a blended score
+would let a safety escape hide behind a good resolver run.
+
+**12 safety invariants** are computed from case outcomes, not asserted by hand.
+Each names the cases that demonstrate it, so a green tick always traces back to
+executed evidence, and an invariant with no covering case does **not** hold —
+absence of a failure is not a demonstration.
+
+### Runtime observability
+
+Tracing is **observational by construction**: traces are assembled *after* a run
+from the state the workflow already produced. `SafetyEngine`, the ranker and the
+validator contain no tracing code at all. A test asserts that removing the layer
+leaves all 50 safety decisions byte-identical.
+
+The one component in the call path is a counting pass-through repository, which
+delegates every call untouched and increments an integer.
+
+Captured per request: node spans with durations and architectural zone, resolver
+method counts, safety counts and rules fired, graph query count, LLM latency and
+provider, validation corrections; plus adjustment counts or MCP intent/tools/mode
+where applicable.
+
+**What is deliberately never captured** — the models have no field for any of it:
+
+- member payload, chat history, labs, image contents
+- the coach's prompt or question (only the *classified intent* and resolver
+  *method* counts)
+- MCP protocol payloads (only tool names)
+- API keys or authorization headers
+
+Token usage is `null` with the offline stub rather than 0 — absent is the honest
+value. Tests walk the serialized JSON and assert no sensitive key appears.
+
+Traces live in memory for the process, not a database: persisting them would
+mean designing retention and access control for data this assessment does not
+need.
+
+### System Quality dashboard
+
+`/system`, reachable from the sidebar's **Quality** item. KPI cards, safety
+invariants, quality-by-category bars, a filterable case matrix with per-case
+detail, execution traces with a waterfall marked at the safe-candidate boundary,
+MCP observability, and evaluation history.
+
+Every value comes from the artifact or the trace payload — nothing is
+hard-coded, and several tests feed *failing* data to assert the page says so.
+Case detail reuses `DecisionPaths`, the same component the coach graph panel
+uses; there is no second provenance renderer to drift.
+
+The coach dashboard at `/` is unchanged.
 
 ---
 
@@ -1152,7 +1240,17 @@ This is an assessment prototype, not a production system. Specifically:
   system does not solve a true time budget from `estimated_rep_duration`.
 - **The embedding pass is lexical.** It catches morphological variants, not
   semantic paraphrase ("her kneecap grinds" would not resolve).
-- **No streaming**, and no evaluation harness beyond the test suite.
+- **No streaming.** Stage-progress streaming was scoped and deliberately
+  skipped: the workflow completes in ~50 ms with the offline stub, so a
+  progress stream would add an SSE transport, a second response path and new
+  failure modes to narrate work that is already over. It becomes worthwhile
+  with a real provider, where composition dominates latency.
+- **Traces are in-process and ephemeral.** The last 50 requests, lost on
+  restart, not shared across workers. Real observability would export spans to
+  a collector.
+- **The evaluation corpus is synthetic and single-member.** 71 cases over one
+  member and a 50-row catalog. It measures whether the system behaves as
+  designed, not whether the design suits real coaches.
 - **The in-app graph view is a focused path viewer, not a network diagram.** It
   renders the exact paths the engine walked, grouped by a backend-assigned
   `path_kind`. It deliberately does not draw the whole graph — the Neo4j browser

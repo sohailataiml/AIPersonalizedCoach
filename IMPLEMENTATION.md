@@ -1394,3 +1394,73 @@ the in-memory and Neo4j backends with identical filtering counts.
    catalog rows and carries no signal.
 5. **Side-aware injury reasoning added** beyond the plan, because the catalog's
    `side` field and the member's *left* knee injury make it meaningful.
+
+---
+
+## Phase 4 - Evaluation, observability, System Quality dashboard
+
+### Evaluation harness
+
+| Item | Location |
+|---|---|
+| Corpus (71 cases, 8 categories) | `backend/app/evaluation/cases.py` |
+| Runner and metrics | `backend/app/evaluation/runner.py` |
+| Adversarial composers | `backend/app/evaluation/adversarial.py` |
+| Artifact store | `backend/app/evaluation/artifacts.py` |
+| CLI | `scripts/run_evals.py` (`make eval`) |
+| Output | `artifacts/evals/<run>.json`, `artifacts/evals/latest.json` |
+
+Categories: concept resolution (13), safety (11), equipment (7), explicit
+exclusions (6), longitudinal (10), adjustment (8), workout validation (8),
+Copilot/MCP (8).
+
+Current measured result: **71/71 passed, 0 unsafe escapes, 12/12 invariants
+proven**, p50 14 ms / p95 225 ms per case.
+
+Exit code is 0 only when every case passes and no unsafe exercise survives
+final validation.
+
+### Observability
+
+| Item | Location |
+|---|---|
+| Trace contracts | `backend/app/domain/trace.py` |
+| Post-hoc collector + call counter | `backend/app/observability/collector.py` |
+| Bounded ring buffer (50) | `backend/app/observability/store.py` |
+| Wiring | `app/api/routes.py`, `app/api/deps.py` |
+
+Traces are built after a run from existing workflow state. No domain service
+was modified to support tracing.
+
+### Read-only API
+
+```text
+GET /api/system/evaluations/latest
+GET /api/system/evaluations?limit=N
+GET /api/system/evaluations/{run_id}
+GET /api/system/traces?limit=N
+GET /api/system/traces/{request_id}
+```
+
+`POST /api/system/evaluations/run` was **not** implemented. Triggering a
+multi-second suite from an HTTP handler would need concurrency control, status
+polling and a background runner, and the honest alternative - `make eval` - is
+one command. The dashboard states that instead of hiding a button that shells
+out.
+
+### Dashboard
+
+Route `frontend/app/system/page.tsx`. Components under
+`frontend/components/system/`:
+
+- `EvaluationOverview.tsx` - KPI cards, safety invariants, quality by category
+- `EvaluationMatrix.tsx` - filterable case table + case detail
+- `ExecutionTraces.tsx` - trace table, waterfall detail, MCP observability
+- `EvaluationHistoryPanel.tsx` - recent runs and P95 trend
+
+### Streaming
+
+Scoped and deliberately skipped. See README *Known limitations* for the
+reasoning: the workflow completes in ~50 ms with the offline stub, so a
+progress stream would add transport and failure modes to narrate work that is
+already finished.

@@ -24,8 +24,16 @@ from app.api.schemas import (
     SafetySummary,
 )
 from app.copilot import analytics
+from app.domain.evaluation import EvaluationHistory, EvaluationRun
 from app.domain.ontology import ConceptGrounding, OntologyGroundingReport
+from app.domain.trace import AdjustmentTraceSummary, RequestTrace, TraceListResponse
 from app.domain.workout import WorkoutRequest
+from app.evaluation.artifacts import EvaluationArtifactStore
+from app.observability.collector import (
+    build_copilot_trace,
+    build_workflow_trace,
+    graph_call_scope,
+)
 from app.ontology.grounding import build_grounding_report, to_concept_grounding
 from app.ontology.loader import get_ontology
 from app.safety.validator import UnsafePlanError
@@ -52,13 +60,14 @@ async def generate_workout(payload: GenerateWorkoutRequest) -> GenerateWorkoutRe
     started = time.perf_counter()
 
     try:
-        state = await services.workflow.run(
-            WorkoutRequest(
-                member_id=payload.member_id,
-                prompt=payload.prompt,
-                duration_minutes=payload.duration_minutes,
+        with graph_call_scope() as graph_calls:
+            state = await services.workflow.run(
+                WorkoutRequest(
+                    member_id=payload.member_id,
+                    prompt=payload.prompt,
+                    duration_minutes=payload.duration_minutes,
+                )
             )
-        )
     except UnsafePlanError as exc:
         # Fail closed: better to return nothing than an unvalidated plan.
         logger.warning("request_id=%s unsafe plan: %s", request_id, exc)
@@ -83,6 +92,18 @@ async def generate_workout(payload: GenerateWorkoutRequest) -> GenerateWorkoutRe
         provenance.counts.get("in_plan", 0),
         len(report.rejected),
         timings["total"],
+    )
+
+    services.traces.record(
+        build_workflow_trace(
+            request_id=request_id,
+            workflow="generate",
+            member_id=payload.member_id,
+            state=state,
+            total_duration_ms=timings["total"],
+            llm_provider=state.get("generator"),
+            graph_query_count=graph_calls.count,
+        )
     )
 
     return _workout_response(GenerateWorkoutResponse, state, request_id, timings, services)
@@ -138,14 +159,15 @@ async def adjust_workout_route(payload: AdjustWorkoutRequest) -> AdjustWorkoutRe
     services = get_services()
 
     try:
-        outcome = await adjust_workout(
-            services=services,
-            member_id=payload.member_id,
-            base_prompt=payload.base_prompt,
-            adjustment=payload.adjustment,
-            base_duration=payload.duration_minutes,
-            previous_exercise_ids=payload.previous_exercise_ids,
-        )
+        with graph_call_scope() as graph_calls:
+            outcome = await adjust_workout(
+                services=services,
+                member_id=payload.member_id,
+                base_prompt=payload.base_prompt,
+                adjustment=payload.adjustment,
+                base_duration=payload.duration_minutes,
+                previous_exercise_ids=payload.previous_exercise_ids,
+            )
     except UnsafePlanError as exc:
         logger.warning("adjustment produced no safe plan: %s", exc)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -169,6 +191,28 @@ async def adjust_workout_route(payload: AdjustWorkoutRequest) -> AdjustWorkoutRe
         timings["total"],
     )
 
+    services.traces.record(
+        build_workflow_trace(
+            request_id=outcome["request_id"],
+            workflow="adjust",
+            member_id=payload.member_id,
+            state=state,
+            total_duration_ms=timings["total"],
+            llm_provider=state.get("generator"),
+            graph_query_count=graph_calls.count,
+            adjustment=AdjustmentTraceSummary(
+                # The instruction text is not recorded - only what it changed.
+                removed_count=diff.counts.get("removed", 0),
+                added_count=diff.counts.get("added", 0),
+                downranked_count=diff.counts.get("downranked", 0),
+                retained_count=diff.counts.get("retained", 0),
+                newly_excluded_count=diff.counts.get("newly_excluded", 0),
+                duration_minutes=outcome["duration_minutes"],
+                baseline_rerun_ms=outcome.get("baseline_rerun_ms"),
+            ),
+        )
+    )
+
     return _workout_response(
         AdjustWorkoutResponse,
         state,
@@ -189,7 +233,8 @@ async def copilot_chat(payload: CopilotRequest) -> CopilotChatResponse:
         raise HTTPException(status_code=404, detail=f"Unknown member {payload.member_id}")
 
     started = time.perf_counter()
-    response = await services.copilot.answer(member, payload.message)
+    with graph_call_scope() as graph_calls:
+        response = await services.copilot.answer(member, payload.message)
     latency = round((time.perf_counter() - started) * 1000, 2)
 
     grounding = response.grounding
@@ -201,6 +246,19 @@ async def copilot_chat(payload: CopilotRequest) -> CopilotChatResponse:
         grounding.mode if grounding else "fallback",
         ",".join(grounding.tools_used) if grounding else "",
         latency,
+    )
+
+    services.traces.record(
+        build_copilot_trace(
+            request_id=uuid.uuid4().hex[:12],
+            member_id=payload.member_id,
+            # The classified intent, never the coach's question.
+            intent=response.intent,
+            total_duration_ms=latency,
+            grounding=grounding,
+            generator=response.generator,
+            graph_query_count=graph_calls.count,
+        )
     )
 
     return CopilotChatResponse(
@@ -351,6 +409,54 @@ def exercise_provenance(exercise_id: str) -> ExerciseProvenanceResponse:
 @router.get("/graph/stats")
 def graph_stats() -> dict[str, int]:
     return get_services().repository.stats()
+
+
+# --- system quality (developer / operator surface) ---------------------------
+#
+# Read-only. These serve the System Quality dashboard, which answers "how is the
+# system performing overall?" - deliberately separate from the coach surface,
+# which answers "what happened for this workout?".
+
+
+@router.get("/system/evaluations/latest", response_model=EvaluationRun | None)
+def latest_evaluation() -> EvaluationRun | None:
+    """The most recent evaluation artifact, or null if none has been run."""
+    return EvaluationArtifactStore().latest()
+
+
+@router.get("/system/evaluations", response_model=EvaluationHistory)
+def evaluation_history(limit: int = 10) -> EvaluationHistory:
+    return EvaluationArtifactStore().history(limit=max(1, min(limit, 50)))
+
+
+@router.get("/system/evaluations/{run_id}", response_model=EvaluationRun)
+def evaluation_run(run_id: str) -> EvaluationRun:
+    try:
+        run = EvaluationArtifactStore().get(run_id)
+    except ValueError as exc:
+        # Run ids become file names, so a malformed one is rejected outright
+        # rather than being allowed anywhere near a path join.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Unknown evaluation run {run_id}")
+    return run
+
+
+@router.get("/system/traces", response_model=TraceListResponse)
+def recent_traces(limit: int = 25) -> TraceListResponse:
+    services = get_services()
+    traces = services.traces.recent(limit=max(1, min(limit, 100)))
+    return TraceListResponse(
+        traces=traces, count=len(traces), capacity=services.traces.capacity
+    )
+
+
+@router.get("/system/traces/{request_id}", response_model=RequestTrace)
+def trace_detail(request_id: str) -> RequestTrace:
+    trace = get_services().traces.get(request_id)
+    if trace is None:
+        raise HTTPException(status_code=404, detail=f"Unknown request {request_id}")
+    return trace
 
 
 @router.get("/ontology/grounding", response_model=OntologyGroundingReport)

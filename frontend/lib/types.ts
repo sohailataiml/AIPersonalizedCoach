@@ -383,6 +383,177 @@ export interface AdjustWorkoutResponse extends GenerateWorkoutResponse {
   diff: AdjustmentDiff;
 }
 
+/* ---- System quality: offline evaluation ---- */
+
+export type EvaluationCategory =
+  | 'concept_resolution'
+  | 'safety'
+  | 'equipment'
+  | 'exclusion'
+  | 'longitudinal'
+  | 'adjustment'
+  | 'validation'
+  | 'copilot_mcp';
+
+export interface EvalGraphEvidence {
+  exercise: string;
+  decision: string;
+  rule_ids: string[];
+  rendered_paths: string[];
+  facts: string[];
+  /** The same traversals the coach UI renders — reused, not re-modelled. */
+  traversals: GraphTraversal[];
+}
+
+export interface EvaluationCaseResult {
+  case_id: string;
+  category: EvaluationCategory;
+  name: string;
+  input_summary: string;
+  expected: string;
+  actual: string;
+  passed: boolean;
+  latency_ms: number;
+  notes: string[];
+  evidence: EvalGraphEvidence[];
+  unsafe_escape: boolean;
+}
+
+/**
+ * Every metric carries its ratio. `value` is derived server-side and is `null`
+ * when nothing was measured — "no cases ran" and "everything failed" are
+ * different facts and must not render the same.
+ */
+export interface EvaluationMetric {
+  key: string;
+  label: string;
+  numerator: number;
+  denominator: number;
+  higher_is_better: boolean;
+  detail: string | null;
+  value: number | null;
+}
+
+export interface EvaluationInvariant {
+  key: string;
+  statement: string;
+  holds: boolean;
+  proven_by: string[];
+  failed_by: string[];
+  detail: string | null;
+  evidence_count: number;
+}
+
+export interface EvaluationLatency {
+  p50_ms: number | null;
+  p95_ms: number | null;
+  max_ms: number | null;
+  total_ms: number;
+}
+
+export interface EvaluationRun {
+  run_id: string;
+  started_at: string;
+  duration_ms: number;
+  graph_backend: string;
+  llm_provider: string;
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  unsafe_escapes: number;
+  metrics: EvaluationMetric[];
+  invariants: EvaluationInvariant[];
+  results: EvaluationCaseResult[];
+  latency: EvaluationLatency;
+  status: 'pass' | 'fail';
+}
+
+export interface EvaluationSummary {
+  run_id: string;
+  started_at: string;
+  status: 'pass' | 'fail';
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  unsafe_escapes: number;
+  p95_ms: number | null;
+  duration_ms: number;
+}
+
+export interface EvaluationHistory {
+  runs: EvaluationSummary[];
+  count: number;
+}
+
+/* ---- System quality: runtime traces ---- */
+
+export type TraceZone = 'deterministic' | 'generative' | 'mcp';
+
+export interface NodeSpan {
+  name: string;
+  duration_ms: number;
+  zone: TraceZone;
+  status: 'ok' | 'error' | 'skipped';
+}
+
+export interface RequestTrace {
+  request_id: string;
+  workflow: 'generate' | 'adjust' | 'copilot' | 'evaluation';
+  member_id: string | null;
+  total_duration_ms: number;
+  started_at: string | null;
+  status: 'ok' | 'error';
+  error_kind: string | null;
+  spans: NodeSpan[];
+  resolution: {
+    resolved_count: number;
+    unresolved_count: number;
+    method_counts: Record<string, number>;
+  } | null;
+  safety: {
+    catalog_count: number;
+    excluded_count: number;
+    downranked_count: number;
+    eligible_count: number;
+    in_plan_count: number;
+    rules_fired: string[];
+    rule_fire_count: number;
+    validation_corrections: number;
+    validation_passed: boolean;
+    hallucinated_ids: number;
+  } | null;
+  adjustment: {
+    removed_count: number;
+    added_count: number;
+    downranked_count: number;
+    retained_count: number;
+    newly_excluded_count: number;
+    duration_minutes: number | null;
+    baseline_rerun_ms: number | null;
+  } | null;
+  mcp: {
+    intent: string | null;
+    mode: 'mcp' | 'fallback' | null;
+    tools_planned: string[];
+    tools_called: string[];
+    tool_duration_ms: number | null;
+    authoritative_safety: boolean;
+    safety_corrected: boolean;
+    generator: string | null;
+  } | null;
+  graph_query_count: number | null;
+  llm_provider: string | null;
+  llm_latency_ms: number | null;
+  llm_input_tokens: number | null;
+  llm_output_tokens: number | null;
+}
+
+export interface TraceListResponse {
+  traces: RequestTrace[];
+  count: number;
+  capacity: number;
+}
+
 export interface Goal {
   id: string;
   text: string;

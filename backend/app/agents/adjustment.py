@@ -93,7 +93,9 @@ async def adjust_workout(
         )
     )
 
+    baseline_started = time.perf_counter()
     baseline = _baseline_candidates(services, member_id, base_prompt, base_duration)
+    baseline_rerun_ms = round((time.perf_counter() - baseline_started) * 1000, 2)
     new_plan_ids = [
         item.exercise_id
         for section in state["generated_workout"].sections
@@ -115,6 +117,7 @@ async def adjust_workout(
         "diff": diff,
         "effective_prompt": effective_prompt,
         "duration_minutes": duration,
+        "baseline_rerun_ms": baseline_rerun_ms,
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
     }
 

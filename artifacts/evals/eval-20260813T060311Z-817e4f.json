@@ -1,0 +1,3887 @@
+{
+  "run_id": "eval-20260813T060311Z-817e4f",
+  "started_at": "2026-08-13T06:03:11+00:00",
+  "duration_ms": 4572.14,
+  "graph_backend": "memory",
+  "llm_provider": "stub",
+  "total_cases": 71,
+  "passed_cases": 71,
+  "failed_cases": 0,
+  "unsafe_escapes": 0,
+  "metrics": [
+    {
+      "key": "concept_resolution_accuracy",
+      "label": "Concept resolution",
+      "numerator": 13,
+      "denominator": 13,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "hard_safety_satisfaction",
+      "label": "Hard safety constraints",
+      "numerator": 11,
+      "denominator": 11,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "equipment_compliance",
+      "label": "Equipment compliance",
+      "numerator": 7,
+      "denominator": 7,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "explicit_exclusion_compliance",
+      "label": "Explicit exclusions",
+      "numerator": 6,
+      "denominator": 6,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "longitudinal_consistency",
+      "label": "Longitudinal consistency",
+      "numerator": 10,
+      "denominator": 10,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "adjustment_satisfaction",
+      "label": "Adjustment constraints",
+      "numerator": 8,
+      "denominator": 8,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "workout_schema_validity",
+      "label": "Workout validation",
+      "numerator": 8,
+      "denominator": 8,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "mcp_routing_accuracy",
+      "label": "Copilot / MCP",
+      "numerator": 8,
+      "denominator": 8,
+      "higher_is_better": true,
+      "detail": null,
+      "value": 1.0
+    },
+    {
+      "key": "unsafe_escape_rate",
+      "label": "Unsafe validation escapes",
+      "numerator": 0,
+      "denominator": 8,
+      "higher_is_better": false,
+      "detail": "Unsafe exercises that survived post-generation validation. Must be 0.",
+      "value": 0.0
+    },
+    {
+      "key": "provenance_coverage",
+      "label": "Provenance coverage",
+      "numerator": 2,
+      "denominator": 2,
+      "higher_is_better": true,
+      "detail": "Every non-allowed decision carries a rule id and graph evidence.",
+      "value": 1.0
+    },
+    {
+      "key": "mcp_safety_parity",
+      "label": "MCP safety parity",
+      "numerator": 2,
+      "denominator": 2,
+      "higher_is_better": true,
+      "detail": "MCP verdicts match a direct SafetyEngine call; outage falls back.",
+      "value": 1.0
+    },
+    {
+      "key": "unresolved_correctness",
+      "label": "Unresolved correctness",
+      "numerator": 3,
+      "denominator": 3,
+      "higher_is_better": true,
+      "detail": "Phrases that must NOT be forced onto a concept.",
+      "value": 1.0
+    }
+  ],
+  "invariants": [
+    {
+      "key": "graph_decides_safety",
+      "statement": "Safety decisions come from graph traversal, not the model",
+      "holds": true,
+      "proven_by": [
+        "safe-knee-plyometric",
+        "safe-part-of-closure",
+        "safe-region-stress"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 3
+    },
+    {
+      "key": "llm_cannot_reintroduce",
+      "statement": "The LLM cannot introduce an excluded exercise",
+      "holds": true,
+      "proven_by": [
+        "val-excluded-exercise",
+        "val-all-excluded",
+        "val-outside-candidates"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 3
+    },
+    {
+      "key": "hallucinated_ids_rejected",
+      "statement": "Invented exercise ids are rejected and the plan fails closed",
+      "holds": true,
+      "proven_by": [
+        "val-hallucinated-id",
+        "val-empty-plan-fails-closed"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 2
+    },
+    {
+      "key": "equipment_survives_composition",
+      "statement": "Equipment constraints survive composition",
+      "holds": true,
+      "proven_by": [
+        "val-unavailable-equipment",
+        "adj-only-dumbbells",
+        "equip-no-barbell"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 3
+    },
+    {
+      "key": "exclusions_override_personalization",
+      "statement": "Explicit exclusions override personalization",
+      "holds": true,
+      "proven_by": [
+        "long-safety-precedence",
+        "adj-exclude-deadlifts"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 2
+    },
+    {
+      "key": "safety_over_longitudinal",
+      "statement": "Hard safety overrides longitudinal ranking",
+      "holds": true,
+      "proven_by": [
+        "long-bounded-adjustment",
+        "long-safety-precedence",
+        "adj-quad-focus"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 3
+    },
+    {
+      "key": "mcp_parity",
+      "statement": "MCP safety matches the direct SafetyEngine",
+      "holds": true,
+      "proven_by": [
+        "mcp-safety-parity",
+        "mcp-safe-candidates"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 2
+    },
+    {
+      "key": "mcp_fallback_is_deterministic",
+      "statement": "An MCP outage falls back to the deterministic engine",
+      "holds": true,
+      "proven_by": [
+        "mcp-fallback"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 1
+    },
+    {
+      "key": "provenance_is_real_evidence",
+      "statement": "Provenance contains real graph or set-operation evidence",
+      "holds": true,
+      "proven_by": [
+        "safe-provenance-coverage",
+        "safe-set-operation-equipment",
+        "mcp-provenance-tool"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 3
+    },
+    {
+      "key": "ontology_is_metadata_only",
+      "statement": "Ontology metadata does not alter SafetyEngine output",
+      "holds": true,
+      "proven_by": [
+        "safe-ontology-neutral"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 1
+    },
+    {
+      "key": "unresolved_is_never_guessed",
+      "statement": "An unresolvable phrase is reported, never forced onto a concept",
+      "holds": true,
+      "proven_by": [
+        "res-unresolved-nonsense",
+        "res-unresolved-vague-clinical",
+        "res-threshold-guard"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 3
+    },
+    {
+      "key": "adjustment_rereuns_safety",
+      "statement": "Every adjustment re-runs the deterministic safety pipeline",
+      "holds": true,
+      "proven_by": [
+        "adj-safety-never-weakened",
+        "adj-knee-safety"
+      ],
+      "failed_by": [],
+      "detail": null,
+      "evidence_count": 2
+    }
+  ],
+  "results": [
+    {
+      "case_id": "res-exact-kettlebell",
+      "category": "concept_resolution",
+      "name": "Exact label match",
+      "input_summary": "\"kettlebell\"",
+      "expected": "equipment:kettlebell via exact, confidence 1.0",
+      "actual": "equipment:kettlebell via exact (1.00)",
+      "passed": true,
+      "latency_ms": 0.16,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-alias-db",
+      "category": "concept_resolution",
+      "name": "Coach shorthand reaches the canonical item",
+      "input_summary": "\"DBs\"",
+      "expected": "equipment:dumbbell with confidence >= 0.98",
+      "actual": "equipment:dumbbell via exact (1.00)",
+      "passed": true,
+      "latency_ms": 0.09,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-alias-equipment",
+      "category": "concept_resolution",
+      "name": "Curated equipment alias",
+      "input_summary": "\"dumbbells\"",
+      "expected": "equipment:dumbbell via alias (0.98)",
+      "actual": "equipment:dumbbell via alias (0.98)",
+      "passed": true,
+      "latency_ms": 0.06,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-alias-knee",
+      "category": "concept_resolution",
+      "name": "Anatomy alias with laterality",
+      "input_summary": "\"left knee\"",
+      "expected": "anatomy:knee via alias",
+      "actual": "anatomy:knee via alias (0.98)",
+      "passed": true,
+      "latency_ms": 0.06,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-alias-deadlift-family",
+      "category": "concept_resolution",
+      "name": "Movement family alias",
+      "input_summary": "\"deadlifts\"",
+      "expected": "movement_family:hinge via alias",
+      "actual": "movement_family:hinge via alias (0.98)",
+      "passed": true,
+      "latency_ms": 0.07,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-fuzzy-typo",
+      "category": "concept_resolution",
+      "name": "Fuzzy typo",
+      "input_summary": "\"kettlebel\"",
+      "expected": "equipment:kettlebell via fuzzy",
+      "actual": "equipment:kettlebell via fuzzy (0.95)",
+      "passed": true,
+      "latency_ms": 3.41,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-fuzzy-plural",
+      "category": "concept_resolution",
+      "name": "Morphological variant",
+      "input_summary": "\"patellofemoral pain syndrome\"",
+      "expected": "injury:patellofemoral_pain_syndrome",
+      "actual": "injury:patellofemoral_pain_syndrome via exact (1.00)",
+      "passed": true,
+      "latency_ms": 0.06,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-vector-fallback",
+      "category": "concept_resolution",
+      "name": "Lexical-vector fallback",
+      "input_summary": "\"dumbell\" with fuzzy disabled",
+      "expected": "equipment:dumbbell via embedding",
+      "actual": "equipment:dumbbell via embedding (0.44)",
+      "passed": true,
+      "latency_ms": 24.77,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-unresolved-nonsense",
+      "category": "concept_resolution",
+      "name": "Unresolved is reported, not guessed",
+      "input_summary": "\"zorblatt machine\"",
+      "expected": "unresolved",
+      "actual": "unresolved (nearest: Cable Resistance Machine, Chest Supported Row Machine)",
+      "passed": true,
+      "latency_ms": 12.41,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-unresolved-vague-clinical",
+      "category": "concept_resolution",
+      "name": "Vague clinical phrase is not force-matched",
+      "input_summary": "\"weird knee-ish thing\"",
+      "expected": "unresolved - must not become anatomy:knee",
+      "actual": "unresolved (nearest: Hip Hinge / Deadlift Family)",
+      "passed": true,
+      "latency_ms": 9.94,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-ambiguous-pronoun",
+      "category": "concept_resolution",
+      "name": "Pronoun carries no concept",
+      "input_summary": "\"make it 30 minutes\"",
+      "expected": "no equipment concept resolved from 'it'",
+      "actual": "0 concept(s), none forbidden",
+      "passed": true,
+      "latency_ms": 17.25,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-ambiguous-back",
+      "category": "concept_resolution",
+      "name": "Ambiguous term resolves to one concept, not several",
+      "input_summary": "\"lower back\"",
+      "expected": "anatomy:lumbar_spine",
+      "actual": "anatomy:lumbar_spine via alias (0.98)",
+      "passed": true,
+      "latency_ms": 0.06,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "res-threshold-guard",
+      "category": "concept_resolution",
+      "name": "Near-threshold match is rejected, not rounded up",
+      "input_summary": "\"kettlebel\" with a 0.99 fuzzy gate",
+      "expected": "unresolved",
+      "actual": "unresolved as expected",
+      "passed": true,
+      "latency_ms": 21.42,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-knee-plyometric",
+      "category": "safety",
+      "name": "Contraindicated pattern is hard-excluded",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "Static Jump EXCLUDED by injury_contraindicated_pattern",
+      "actual": "Static Jump EXCLUDED; Vertical Jump to Broad Jump EXCLUDED",
+      "passed": true,
+      "latency_ms": 12.22,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "Static Jump",
+          "decision": "excluded",
+          "rule_ids": [
+            "injury_contraindicated_pattern",
+            "injury_region_stress"
+          ],
+          "rendered_paths": [
+            "Patellofemoral Pain Syndrome -[CONTRAINDICATES]-> cardio - plyometric -[HAS_PATTERN]-> Static Jump",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Static Jump -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint"
+          ],
+          "facts": [],
+          "traversals": [
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0",
+              "constraint_type": "contraindication",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome contraindicates the 'cardio - plyometric' pattern.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:0",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:1",
+                  "label": "cardio - plyometric",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:2",
+                  "label": "Static Jump",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:1",
+                  "relationship": "CONTRAINDICATES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:1",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:2",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "incoming",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1",
+              "constraint_type": "contraindication",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome contraindicates the 'cardio - plyometric' pattern.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:1",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:2",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-1:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:0",
+                  "label": "Static Jump",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:1",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:2",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        },
+        {
+          "exercise": "Vertical Jump to Broad Jump",
+          "decision": "excluded",
+          "rule_ids": [
+            "injury_contraindicated_pattern",
+            "injury_region_stress"
+          ],
+          "rendered_paths": [
+            "Patellofemoral Pain Syndrome -[CONTRAINDICATES]-> cardio - plyometric -[HAS_PATTERN]-> Vertical Jump to Broad Jump",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Vertical Jump to Broad Jump -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint"
+          ],
+          "facts": [],
+          "traversals": [
+            {
+              "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0",
+              "constraint_type": "contraindication",
+              "exercise_id": "01e33d9f-3607-49db-bd59-af7f61d77300",
+              "exercise_name": "Vertical Jump to Broad Jump",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome contraindicates the 'cardio - plyometric' pattern.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0:0",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0:1",
+                  "label": "cardio - plyometric",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0:2",
+                  "label": "Vertical Jump to Broad Jump",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0:0",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0:1",
+                  "relationship": "CONTRAINDICATES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0:1",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-0:2",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "incoming",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1",
+              "constraint_type": "contraindication",
+              "exercise_id": "01e33d9f-3607-49db-bd59-af7f61d77300",
+              "exercise_name": "Vertical Jump to Broad Jump",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome contraindicates the 'cardio - plyometric' pattern.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:0",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:1",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:2",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:0-1:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01e33d9f-3607-49db-bd59-af7f61d77300",
+              "exercise_name": "Vertical Jump to Broad Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-0:0",
+                  "label": "Vertical Jump to Broad Jump",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-0:0",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01e33d9f-3607-49db-bd59-af7f61d77300",
+              "exercise_name": "Vertical Jump to Broad Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-1:0",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01e33d9f-3607-49db-bd59-af7f61d77300",
+              "exercise_name": "Vertical Jump to Broad Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:0",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:1",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:2",
+                  "target_id": "01e33d9f-3607-49db-bd59-af7f61d77300:1-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-part-of-closure",
+      "category": "safety",
+      "name": "PART_OF closure reaches the parent joint",
+      "input_summary": "injury at patellofemoral_joint",
+      "expected": "closure = {patellofemoral_joint, knee, lower_limb}",
+      "actual": "closure = ['knee', 'lower_limb', 'patellofemoral_joint']",
+      "passed": true,
+      "latency_ms": 0.04,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-region-stress",
+      "category": "safety",
+      "name": "Knee-loading work is down-ranked with evidence",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "Dumbbell Goblet Split Squat DOWN-RANKED by injury_region_stress",
+      "actual": "Dumbbell Goblet Split Squat DOWN-RANKED",
+      "passed": true,
+      "latency_ms": 14.01,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "Dumbbell Goblet Split Squat",
+          "decision": "downranked",
+          "rule_ids": [
+            "injury_contraindicated_pattern",
+            "injury_region_stress",
+            "injury_side_specific"
+          ],
+          "rendered_paths": [
+            "Patellofemoral Pain Syndrome -[CONTRAINDICATES]-> lower push - split squat -[HAS_PATTERN]-> Dumbbell Goblet Split Squat",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Dumbbell Goblet Split Squat -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Dumbbell Goblet Split Squat",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint"
+          ],
+          "facts": [
+            "Exercise property side = left_leg.",
+            "Injury laterality = left.",
+            "Unilateral variant loads the injured side."
+          ],
+          "traversals": [
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0",
+              "constraint_type": "contraindication",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "downranked",
+              "reason": "Patellofemoral Pain Syndrome cautions against the 'lower push - split squat' pattern; injury is mild/recovering, so this is down-ranked and needs a range-of-motion caveat rather than removed.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:0",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:1",
+                  "label": "lower push - split squat",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:2",
+                  "label": "Dumbbell Goblet Split Squat",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:1",
+                  "relationship": "CONTRAINDICATES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:2",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "incoming",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1",
+              "constraint_type": "contraindication",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "downranked",
+              "reason": "Patellofemoral Pain Syndrome cautions against the 'lower push - split squat' pattern; injury is mild/recovering, so this is down-ranked and needs a range-of-motion caveat rather than removed.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:2",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "downranked",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:0",
+                  "label": "Dumbbell Goblet Split Squat",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "downranked",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "downranked",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:2",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "downranked",
+              "reason": "Unilateral variant loads the left side, which is the injured side (Left Knee (recovering)).",
+              "rule_id": "injury_side_specific",
+              "source": "graph_traversal",
+              "path_kind": "set_operation",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0:0",
+                  "label": "Dumbbell Goblet Split Squat",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [],
+              "facts": [
+                "Exercise property side = left_leg.",
+                "Injury laterality = left.",
+                "Unilateral variant loads the injured side."
+              ],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "downranked",
+              "reason": "Unilateral variant loads the left side, which is the injured side (Left Knee (recovering)).",
+              "rule_id": "injury_side_specific",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_side_specific"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_side_specific"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:2",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_side_specific"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-side-aware",
+      "category": "safety",
+      "name": "Unilateral variant loading the injured side is penalised",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "injury_side_specific fires somewhere in the catalog",
+      "actual": "injury_side_specific fired",
+      "passed": true,
+      "latency_ms": 13.44,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-unknown-anatomy",
+      "category": "safety",
+      "name": "Missing joint data is not treated as safe",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "unknown_anatomy fires and down-ranks",
+      "actual": "unknown_anatomy fired",
+      "passed": true,
+      "latency_ms": 12.97,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-alternative-remains",
+      "category": "safety",
+      "name": "A safe alternative survives the injury filter",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "at least 10 eligible candidates remain",
+      "actual": "18 eligible",
+      "passed": true,
+      "latency_ms": 13.58,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-set-operation-equipment",
+      "category": "safety",
+      "name": "Equipment absence is stated as a fact, not drawn as a fake edge",
+      "input_summary": "Build a full-body workout. She has no barbell, only dumbbells and a kettlebell.",
+      "expected": "evidence carries facts; only REQUIRES is traversed",
+      "actual": "equipment_unavailable evidence: facts present, only REQUIRES traversed",
+      "passed": true,
+      "latency_ms": 7.17,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "Alternating Dumbbell Decline Bench Press",
+          "decision": "excluded",
+          "rule_ids": [
+            "equipment_unavailable",
+            "unknown_anatomy"
+          ],
+          "rendered_paths": [
+            "Alternating Dumbbell Decline Bench Press -[REQUIRES]-> Adjustable Bench - Decline",
+            "Alternating Dumbbell Decline Bench Press"
+          ],
+          "facts": [
+            "Required: Adjustable Bench - Decline, Dumbbell.",
+            "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Yoga Mat.",
+            "Adjustable Bench - Decline is not in the available set.",
+            "Catalog lists no joints_loaded for this exercise.",
+            "No STRESSES edges exist, so no anatomy traversal is possible.",
+            "Cannot be certified against Left Knee (recovering)."
+          ],
+          "traversals": [
+            {
+              "id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:0-0",
+              "constraint_type": "equipment",
+              "exercise_id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935",
+              "exercise_name": "Alternating Dumbbell Decline Bench Press",
+              "decision": "excluded",
+              "reason": "Requires Adjustable Bench - Decline, which Jordan Rivera does not have.",
+              "rule_id": "equipment_unavailable",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:0-0:0",
+                  "label": "Alternating Dumbbell Decline Bench Press",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:0-0:1",
+                  "label": "Adjustable Bench - Decline",
+                  "type": "Equipment",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:0-0:0",
+                  "target_id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:0-0:1",
+                  "relationship": "REQUIRES",
+                  "direction": "outgoing",
+                  "rule_id": "equipment_unavailable"
+                }
+              ],
+              "facts": [
+                "Required: Adjustable Bench - Decline, Dumbbell.",
+                "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Yoga Mat.",
+                "Adjustable Bench - Decline is not in the available set."
+              ],
+              "source_concept": null
+            },
+            {
+              "id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:1-0",
+              "constraint_type": "data_gap",
+              "exercise_id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935",
+              "exercise_name": "Alternating Dumbbell Decline Bench Press",
+              "decision": "excluded",
+              "reason": "Catalog lists no joints for this exercise, so it cannot be certified against the member's injury. Down-ranked as a precaution.",
+              "rule_id": "unknown_anatomy",
+              "source": "deterministic_set_operation",
+              "path_kind": "set_operation",
+              "nodes": [
+                {
+                  "id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:1-0:0",
+                  "label": "Alternating Dumbbell Decline Bench Press",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [],
+              "facts": [
+                "Catalog lists no joints_loaded for this exercise.",
+                "No STRESSES edges exist, so no anatomy traversal is possible.",
+                "Cannot be certified against Left Knee (recovering)."
+              ],
+              "source_concept": null
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-preference-never-excludes",
+      "category": "safety",
+      "name": "A dislike never becomes a safety exclusion",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "no exercise is excluded by preference_dislike",
+      "actual": "preference_dislike never excluded anything",
+      "passed": true,
+      "latency_ms": 14.05,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-counts-injury",
+      "category": "safety",
+      "name": "Injury scenario filtering counts are stable",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "eligible=18 excluded=32 downranked=8",
+      "actual": "{'eligible': 18, 'excluded': 32, 'downranked': 8}",
+      "passed": true,
+      "latency_ms": 19.11,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-provenance-coverage",
+      "category": "safety",
+      "name": "Every excluded exercise carries evidence",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "100% of exclusions carry a rule and evidence",
+      "actual": "40/40 flagged decisions carry evidence",
+      "passed": true,
+      "latency_ms": 20.76,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "safe-ontology-neutral",
+      "category": "safety",
+      "name": "Ontology metadata does not alter safety output",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "stripping every SNOMED mapping leaves all 50 decisions identical",
+      "actual": "50/50 decisions identical without grounding",
+      "passed": true,
+      "latency_ms": 146.16,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "equip-no-barbell",
+      "category": "equipment",
+      "name": "Negated equipment is excluded",
+      "input_summary": "Build a full-body workout. She has no barbell, only dumbbells and a kettlebell.",
+      "expected": "no eligible exercise requires a Barbell",
+      "actual": "16 eligible, none require Barbell",
+      "passed": true,
+      "latency_ms": 7.2,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "equip-restrictive-set",
+      "category": "equipment",
+      "name": "Restrictive phrasing narrows the available set",
+      "input_summary": "Build a full-body workout. She has no barbell, only dumbbells and a kettlebell.",
+      "expected": "no machine-based exercise survives",
+      "actual": "16 eligible, none require Cable Resistance Machine, Seated Lat Pulldown Machine, Horizontal Leg Press Machine",
+      "passed": true,
+      "latency_ms": 7.15,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "equip-negation-does-not-leak",
+      "category": "equipment",
+      "name": "Negation does not leak across clauses",
+      "input_summary": "\"no barbell, only dumbbells and a kettlebell\"",
+      "expected": "Kettlebell remains available; Barbell does not",
+      "actual": "available = Dumbbell, Flat Bench, Kettlebell, Yoga Mat",
+      "passed": true,
+      "latency_ms": 0.84,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "equip-dumbbell-only",
+      "category": "equipment",
+      "name": "Dumbbell-only request",
+      "input_summary": "\"lower body, only dumbbells\"",
+      "expected": "no eligible exercise requires a Kettlebell or Barbell",
+      "actual": "15 eligible, none require Kettlebell, Barbell",
+      "passed": true,
+      "latency_ms": 8.99,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "equip-kettlebell-only",
+      "category": "equipment",
+      "name": "Kettlebell-only request",
+      "input_summary": "\"full body, only a kettlebell\"",
+      "expected": "no eligible exercise requires a Dumbbell or Barbell",
+      "actual": "11 eligible, none require Dumbbell, Barbell",
+      "passed": true,
+      "latency_ms": 6.53,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "equip-restrictive-correction",
+      "category": "equipment",
+      "name": "A later restrictive clause supersedes an earlier one",
+      "input_summary": "\"...only dumbbells and a kettlebell. Only use dumbbells.\"",
+      "expected": "Kettlebell work becomes ineligible",
+      "actual": "15 eligible, none require Kettlebell",
+      "passed": true,
+      "latency_ms": 13.62,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "equip-bodyweight-survives",
+      "category": "equipment",
+      "name": "Bodyweight work is never filtered by equipment",
+      "input_summary": "\"only dumbbells\"",
+      "expected": "bodyweight exercises remain eligible",
+      "actual": "2 bodyweight exercises remain eligible",
+      "passed": true,
+      "latency_ms": 6.51,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "excl-deadlift-family",
+      "category": "exclusion",
+      "name": "Deadlift exclusion reaches the hinge family",
+      "input_summary": "\"lower body but exclude deadlifts\"",
+      "expected": "both hamstring walkouts EXCLUDED by explicit_exclusion",
+      "actual": "One-Kettlebell Hamstring Walkout, Med Ball Hamstring Walkout EXCLUDED",
+      "passed": true,
+      "latency_ms": 7.88,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "One-Kettlebell Hamstring Walkout",
+          "decision": "excluded",
+          "rule_ids": [
+            "explicit_exclusion",
+            "injury_region_stress",
+            "preference_dislike"
+          ],
+          "rendered_paths": [
+            "One-Kettlebell Hamstring Walkout -[HAS_PATTERN]-> lower pull - hip lift -[IN_FAMILY]-> Hip Hinge / Deadlift Family",
+            "One-Kettlebell Hamstring Walkout -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Jordan Rivera -[DISLIKES]-> Deadlift",
+            "One-Kettlebell Hamstring Walkout -[HAS_PATTERN]-> lower pull - hip lift -[IN_FAMILY]-> Hip Hinge / Deadlift Family"
+          ],
+          "facts": [
+            "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+          ],
+          "traversals": [
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0",
+              "constraint_type": "explicit_exclusion",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Coach excluded \"deadlifts\", which resolves to the Hip Hinge / Deadlift Family; this exercise belongs to that family.",
+              "rule_id": "explicit_exclusion",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:0",
+                  "label": "One-Kettlebell Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:1",
+                  "label": "lower pull - hip lift",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:2",
+                  "label": "Hip Hinge / Deadlift Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:1",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                }
+              ],
+              "facts": [
+                "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+              ],
+              "source_concept": "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:0",
+                  "label": "One-Kettlebell Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:1",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:2",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0",
+              "constraint_type": "preference_ranking",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Jordan Rivera dislikes \"Deadlift\". Preference affects ranking only - this is not a safety exclusion.",
+              "rule_id": "preference_dislike",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:1",
+                  "label": "Deadlift",
+                  "type": "Preference",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:1",
+                  "relationship": "DISLIKES",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1",
+              "constraint_type": "preference_ranking",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Jordan Rivera dislikes \"Deadlift\". Preference affects ranking only - this is not a safety exclusion.",
+              "rule_id": "preference_dislike",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:0",
+                  "label": "One-Kettlebell Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:1",
+                  "label": "lower pull - hip lift",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:2",
+                  "label": "Hip Hinge / Deadlift Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:1",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        },
+        {
+          "exercise": "Med Ball Hamstring Walkout",
+          "decision": "excluded",
+          "rule_ids": [
+            "explicit_exclusion",
+            "equipment_unavailable",
+            "injury_region_stress",
+            "preference_dislike"
+          ],
+          "rendered_paths": [
+            "Med Ball Hamstring Walkout -[HAS_PATTERN]-> lower pull - hip lift -[IN_FAMILY]-> Hip Hinge / Deadlift Family",
+            "Med Ball Hamstring Walkout -[REQUIRES]-> Medicine Ball",
+            "Med Ball Hamstring Walkout -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Jordan Rivera -[DISLIKES]-> Deadlift",
+            "Med Ball Hamstring Walkout -[HAS_PATTERN]-> lower pull - hip lift -[IN_FAMILY]-> Hip Hinge / Deadlift Family"
+          ],
+          "facts": [
+            "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family.",
+            "Required: Medicine Ball, Yoga Mat.",
+            "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Resistance Band - Loop, Yoga Mat.",
+            "Medicine Ball is not in the available set."
+          ],
+          "traversals": [
+            {
+              "id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0",
+              "constraint_type": "explicit_exclusion",
+              "exercise_id": "2248e07a-93de-4da1-ad20-aff27537a99a",
+              "exercise_name": "Med Ball Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Coach excluded \"deadlifts\", which resolves to the Hip Hinge / Deadlift Family; this exercise belongs to that family.",
+              "rule_id": "explicit_exclusion",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0:0",
+                  "label": "Med Ball Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0:1",
+                  "label": "lower pull - hip lift",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0:2",
+                  "label": "Hip Hinge / Deadlift Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0:0",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                },
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0:1",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:0-0:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                }
+              ],
+              "facts": [
+                "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+              ],
+              "source_concept": "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+            },
+            {
+              "id": "2248e07a-93de-4da1-ad20-aff27537a99a:1-0",
+              "constraint_type": "equipment",
+              "exercise_id": "2248e07a-93de-4da1-ad20-aff27537a99a",
+              "exercise_name": "Med Ball Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Requires Medicine Ball, which Jordan Rivera does not have.",
+              "rule_id": "equipment_unavailable",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:1-0:0",
+                  "label": "Med Ball Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:1-0:1",
+                  "label": "Medicine Ball",
+                  "type": "Equipment",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:1-0:0",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:1-0:1",
+                  "relationship": "REQUIRES",
+                  "direction": "outgoing",
+                  "rule_id": "equipment_unavailable"
+                }
+              ],
+              "facts": [
+                "Required: Medicine Ball, Yoga Mat.",
+                "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Resistance Band - Loop, Yoga Mat.",
+                "Medicine Ball is not in the available set."
+              ],
+              "source_concept": null
+            },
+            {
+              "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "2248e07a-93de-4da1-ad20-aff27537a99a",
+              "exercise_name": "Med Ball Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-0:0",
+                  "label": "Med Ball Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-0:0",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "2248e07a-93de-4da1-ad20-aff27537a99a",
+              "exercise_name": "Med Ball Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-1:0",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "2248e07a-93de-4da1-ad20-aff27537a99a",
+              "exercise_name": "Med Ball Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:0",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:1",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:2",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:2-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-0",
+              "constraint_type": "preference_ranking",
+              "exercise_id": "2248e07a-93de-4da1-ad20-aff27537a99a",
+              "exercise_name": "Med Ball Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Jordan Rivera dislikes \"Deadlift\". Preference affects ranking only - this is not a safety exclusion.",
+              "rule_id": "preference_dislike",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-0:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-0:1",
+                  "label": "Deadlift",
+                  "type": "Preference",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-0:0",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-0:1",
+                  "relationship": "DISLIKES",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1",
+              "constraint_type": "preference_ranking",
+              "exercise_id": "2248e07a-93de-4da1-ad20-aff27537a99a",
+              "exercise_name": "Med Ball Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Jordan Rivera dislikes \"Deadlift\". Preference affects ranking only - this is not a safety exclusion.",
+              "rule_id": "preference_dislike",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1:0",
+                  "label": "Med Ball Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1:1",
+                  "label": "lower pull - hip lift",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1:2",
+                  "label": "Hip Hinge / Deadlift Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1:0",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                },
+                {
+                  "source_id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1:1",
+                  "target_id": "2248e07a-93de-4da1-ad20-aff27537a99a:3-1:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "excl-no-literal-deadlift",
+      "category": "exclusion",
+      "name": "No catalog exercise is literally named deadlift",
+      "input_summary": "catalog scan",
+      "expected": "0 exercises contain 'deadlift' in their name",
+      "actual": "0 exercises contain 'deadlift' - exclusion must use the graph",
+      "passed": true,
+      "latency_ms": 0.04,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "excl-squat-family",
+      "category": "exclusion",
+      "name": "A second family excludes correctly",
+      "input_summary": "\"full body, avoid squats\"",
+      "expected": "squat-family work EXCLUDED by explicit_exclusion",
+      "actual": "Dumbbell Goblet Split Squat EXCLUDED",
+      "passed": true,
+      "latency_ms": 8.04,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "Dumbbell Goblet Split Squat",
+          "decision": "excluded",
+          "rule_ids": [
+            "explicit_exclusion",
+            "injury_contraindicated_pattern",
+            "injury_region_stress",
+            "injury_side_specific"
+          ],
+          "rendered_paths": [
+            "Dumbbell Goblet Split Squat -[HAS_PATTERN]-> lower push - split squat -[IN_FAMILY]-> Squat Family",
+            "Patellofemoral Pain Syndrome -[CONTRAINDICATES]-> lower push - split squat -[HAS_PATTERN]-> Dumbbell Goblet Split Squat",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Dumbbell Goblet Split Squat -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Dumbbell Goblet Split Squat",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint"
+          ],
+          "facts": [
+            "Coach phrase \"squats\" resolved to the Squat Family.",
+            "Exercise property side = left_leg.",
+            "Injury laterality = left.",
+            "Unilateral variant loads the injured side."
+          ],
+          "traversals": [
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0",
+              "constraint_type": "explicit_exclusion",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Coach excluded \"squats\", which resolves to the Squat Family; this exercise belongs to that family.",
+              "rule_id": "explicit_exclusion",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:0",
+                  "label": "Dumbbell Goblet Split Squat",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:1",
+                  "label": "lower push - split squat",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:2",
+                  "label": "Squat Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                }
+              ],
+              "facts": [
+                "Coach phrase \"squats\" resolved to the Squat Family."
+              ],
+              "source_concept": "Coach phrase \"squats\" resolved to the Squat Family."
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0",
+              "constraint_type": "contraindication",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome cautions against the 'lower push - split squat' pattern; injury is mild/recovering, so this is down-ranked and needs a range-of-motion caveat rather than removed.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:0",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:1",
+                  "label": "lower push - split squat",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:2",
+                  "label": "Dumbbell Goblet Split Squat",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:1",
+                  "relationship": "CONTRAINDICATES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0:2",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "incoming",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1",
+              "constraint_type": "contraindication",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome cautions against the 'lower push - split squat' pattern; injury is mild/recovering, so this is down-ranked and needs a range-of-motion caveat rather than removed.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:2",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0:0",
+                  "label": "Dumbbell Goblet Split Squat",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:2",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Unilateral variant loads the left side, which is the injured side (Left Knee (recovering)).",
+              "rule_id": "injury_side_specific",
+              "source": "graph_traversal",
+              "path_kind": "set_operation",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-0:0",
+                  "label": "Dumbbell Goblet Split Squat",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [],
+              "facts": [
+                "Exercise property side = left_leg.",
+                "Injury laterality = left.",
+                "Unilateral variant loads the injured side."
+              ],
+              "source_concept": null
+            },
+            {
+              "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53",
+              "exercise_name": "Dumbbell Goblet Split Squat",
+              "decision": "excluded",
+              "reason": "Unilateral variant loads the left side, which is the injured side (Left Knee (recovering)).",
+              "rule_id": "injury_side_specific",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:0",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_side_specific"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:1",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_side_specific"
+                },
+                {
+                  "source_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:2",
+                  "target_id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:3-1:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_side_specific"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "excl-plyometric-family",
+      "category": "exclusion",
+      "name": "Plyometric family exclusion",
+      "input_summary": "\"full body, no plyometrics\"",
+      "expected": "Static Jump EXCLUDED",
+      "actual": "Static Jump EXCLUDED",
+      "passed": true,
+      "latency_ms": 10.52,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "Static Jump",
+          "decision": "excluded",
+          "rule_ids": [
+            "explicit_exclusion",
+            "injury_contraindicated_pattern",
+            "injury_region_stress"
+          ],
+          "rendered_paths": [
+            "Static Jump -[HAS_PATTERN]-> cardio - plyometric -[IN_FAMILY]-> Plyometric / Jumping Family",
+            "Patellofemoral Pain Syndrome -[CONTRAINDICATES]-> cardio - plyometric -[HAS_PATTERN]-> Static Jump",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Static Jump -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint"
+          ],
+          "facts": [
+            "Coach phrase \"plyometrics\" resolved to the Plyometric / Jumping Family."
+          ],
+          "traversals": [
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0",
+              "constraint_type": "explicit_exclusion",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Coach excluded \"plyometrics\", which resolves to the Plyometric / Jumping Family; this exercise belongs to that family.",
+              "rule_id": "explicit_exclusion",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:0",
+                  "label": "Static Jump",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:1",
+                  "label": "cardio - plyometric",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:2",
+                  "label": "Plyometric / Jumping Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:1",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:0-0:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                }
+              ],
+              "facts": [
+                "Coach phrase \"plyometrics\" resolved to the Plyometric / Jumping Family."
+              ],
+              "source_concept": "Coach phrase \"plyometrics\" resolved to the Plyometric / Jumping Family."
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0",
+              "constraint_type": "contraindication",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome contraindicates the 'cardio - plyometric' pattern.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:0",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:1",
+                  "label": "cardio - plyometric",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:2",
+                  "label": "Static Jump",
+                  "type": "Exercise",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:1",
+                  "relationship": "CONTRAINDICATES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:1",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-0:2",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "incoming",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1",
+              "constraint_type": "contraindication",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Patellofemoral Pain Syndrome contraindicates the 'cardio - plyometric' pattern.",
+              "rule_id": "injury_contraindicated_pattern",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:1",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:2",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:1-1:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_contraindicated_pattern"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-0:0",
+                  "label": "Static Jump",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-0:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-1:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd",
+              "exercise_name": "Static Jump",
+              "decision": "excluded",
+              "reason": "Low-load exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:0",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:1",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:2",
+                  "target_id": "01ff62bc-e887-49e4-9cc8-bcd367b34cfd:2-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "excl-equipment-ban",
+      "category": "exclusion",
+      "name": "Equipment ban is an explicit exclusion",
+      "input_summary": "\"no barbell\"",
+      "expected": "barbell work EXCLUDED by explicit_exclusion",
+      "actual": "Barbell Decline Bench Press EXCLUDED",
+      "passed": true,
+      "latency_ms": 16.43,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "Barbell Decline Bench Press",
+          "decision": "excluded",
+          "rule_ids": [
+            "explicit_exclusion"
+          ],
+          "rendered_paths": [
+            "Barbell Decline Bench Press -[REQUIRES]-> Barbell"
+          ],
+          "facts": [
+            "Coach excluded \"barbell\"."
+          ],
+          "traversals": [
+            {
+              "id": "0b3178cf-bf89-45a3-bfb0-27310ef6ef38:0-0",
+              "constraint_type": "explicit_exclusion",
+              "exercise_id": "0b3178cf-bf89-45a3-bfb0-27310ef6ef38",
+              "exercise_name": "Barbell Decline Bench Press",
+              "decision": "excluded",
+              "reason": "Requires Barbell, which the coach excluded (\"barbell\").",
+              "rule_id": "explicit_exclusion",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0b3178cf-bf89-45a3-bfb0-27310ef6ef38:0-0:0",
+                  "label": "Barbell Decline Bench Press",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0b3178cf-bf89-45a3-bfb0-27310ef6ef38:0-0:1",
+                  "label": "Barbell",
+                  "type": "Equipment",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0b3178cf-bf89-45a3-bfb0-27310ef6ef38:0-0:0",
+                  "target_id": "0b3178cf-bf89-45a3-bfb0-27310ef6ef38:0-0:1",
+                  "relationship": "REQUIRES",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                }
+              ],
+              "facts": [
+                "Coach excluded \"barbell\"."
+              ],
+              "source_concept": "Coach excluded \"barbell\"."
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "excl-does-not-overreach",
+      "category": "exclusion",
+      "name": "Exclusion does not remove unrelated work",
+      "input_summary": "\"lower body but exclude deadlifts\"",
+      "expected": "upper-body pressing remains eligible",
+      "actual": "Alternating Dumbbell Overhead Press still eligible",
+      "passed": true,
+      "latency_ms": 10.63,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-declining-adherence",
+      "category": "longitudinal",
+      "name": "Declining adherence is read from the observations",
+      "input_summary": "4 adherence weeks: 100, 100, 75, 50",
+      "expected": "direction=declining, delta=-50",
+      "actual": "adherence declining; delta -50.0",
+      "passed": true,
+      "latency_ms": 1.32,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-sleep-flat",
+      "category": "longitudinal",
+      "name": "Sleep reads flat because the data is flat",
+      "input_summary": "7 nights averaging 6.27h",
+      "expected": "direction=flat - not 'declining'",
+      "actual": "sleep flat (avg 6.27h)",
+      "passed": true,
+      "latency_ms": 1.19,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-training-load-low",
+      "category": "longitudinal",
+      "name": "Training load is measured against the member's own target",
+      "input_summary": "3 completed sessions, target 4/week",
+      "expected": "state=low",
+      "actual": "load low (2.62/wk)",
+      "passed": true,
+      "latency_ms": 0.94,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-progression-hold",
+      "category": "longitudinal",
+      "name": "Progression holds and states why",
+      "input_summary": "declining adherence + low load",
+      "expected": "progression=hold with rationale",
+      "actual": "progression hold",
+      "passed": true,
+      "latency_ms": 0.81,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-stable-adherence",
+      "category": "longitudinal",
+      "name": "Stable adherence does not force a hold",
+      "input_summary": "4 weeks at 90%, target 2/week",
+      "expected": "progression=progress",
+      "actual": "progression progress, injury recovering (recorded_status)",
+      "passed": true,
+      "latency_ms": 2.12,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-insufficient-history",
+      "category": "longitudinal",
+      "name": "One week of history is insufficient, not flat",
+      "input_summary": "1 adherence observation",
+      "expected": "progression=insufficient_data",
+      "actual": "progression insufficient_data, injury recovering (recorded_status)",
+      "passed": true,
+      "latency_ms": 4.35,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-injury-not-inferred",
+      "category": "longitudinal",
+      "name": "Injury trajectory is recorded, never inferred",
+      "input_summary": "adherence driven to 10%",
+      "expected": "injury_trajectory stays 'recovering' from recorded status",
+      "actual": "progression hold, injury recovering (recorded_status)",
+      "passed": true,
+      "latency_ms": 2.39,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-familiar-boost",
+      "category": "longitudinal",
+      "name": "Familiar movement families are boosted while adherence declines",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "at least one candidate carries a familiarity bonus",
+      "actual": "7 boosted, e.g. One-Kettlebell Hamstring Walkout (+6)",
+      "passed": true,
+      "latency_ms": 14.68,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-safety-precedence",
+      "category": "longitudinal",
+      "name": "Hard safety overrides a longitudinal boost",
+      "input_summary": "\"exclude deadlifts\" (hinge is the most familiar family)",
+      "expected": "no excluded exercise appears in the ranked set",
+      "actual": "33 excluded, 0 survived ranking",
+      "passed": true,
+      "latency_ms": 9.3,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "long-bounded-adjustment",
+      "category": "longitudinal",
+      "name": "Personalization is bounded below the smallest safety penalty",
+      "input_summary": "policy constants",
+      "expected": "MAX_LONGITUDINAL_ADJUSTMENT < SMALLEST_SAFETY_PENALTY",
+      "actual": "max longitudinal 6.0 < smallest safety penalty 8.0",
+      "passed": true,
+      "latency_ms": 0.01,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-exclude-deadlifts",
+      "category": "adjustment",
+      "name": "Exclude deadlifts",
+      "input_summary": "base + \"Exclude deadlifts.\"",
+      "expected": "hinge family newly ineligible; plan excludes it",
+      "actual": "One-Kettlebell Hamstring Walkout now ineligible",
+      "passed": true,
+      "latency_ms": 177.02,
+      "notes": [],
+      "evidence": [
+        {
+          "exercise": "One-Kettlebell Hamstring Walkout",
+          "decision": "excluded",
+          "rule_ids": [
+            "explicit_exclusion",
+            "injury_region_stress",
+            "preference_dislike"
+          ],
+          "rendered_paths": [
+            "One-Kettlebell Hamstring Walkout -[HAS_PATTERN]-> lower pull - hip lift -[IN_FAMILY]-> Hip Hinge / Deadlift Family",
+            "One-Kettlebell Hamstring Walkout -[STRESSES]-> Knee",
+            "Patellofemoral Joint -[PART_OF]-> Knee",
+            "Jordan Rivera -[HAS_INJURY]-> Left Knee (recovering) -[MAPS_TO]-> Patellofemoral Pain Syndrome -[AFFECTS]-> Patellofemoral Joint",
+            "Jordan Rivera -[DISLIKES]-> Deadlift",
+            "One-Kettlebell Hamstring Walkout -[HAS_PATTERN]-> lower pull - hip lift -[IN_FAMILY]-> Hip Hinge / Deadlift Family"
+          ],
+          "facts": [
+            "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+          ],
+          "traversals": [
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0",
+              "constraint_type": "explicit_exclusion",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Coach excluded \"deadlifts\", which resolves to the Hip Hinge / Deadlift Family; this exercise belongs to that family.",
+              "rule_id": "explicit_exclusion",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:0",
+                  "label": "One-Kettlebell Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:1",
+                  "label": "lower pull - hip lift",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:2",
+                  "label": "Hip Hinge / Deadlift Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:1",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:0-0:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "explicit_exclusion"
+                }
+              ],
+              "facts": [
+                "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+              ],
+              "source_concept": "Coach phrase \"deadlifts\" resolved to the Hip Hinge / Deadlift Family."
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:0",
+                  "label": "One-Kettlebell Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-0:1",
+                  "relationship": "STRESSES",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "anatomy_hierarchy",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:0",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:1",
+                  "label": "Knee",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-1:1",
+                  "relationship": "PART_OF",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2",
+              "constraint_type": "injury_anatomy",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Loaded exercise stresses knee, which is inside the region affected by Left Knee (recovering).",
+              "rule_id": "injury_region_stress",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:1",
+                  "label": "Left Knee (recovering)",
+                  "type": "Injury",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:2",
+                  "label": "Patellofemoral Pain Syndrome",
+                  "type": "InjuryCondition",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:3",
+                  "label": "Patellofemoral Joint",
+                  "type": "AnatomicalRegion",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:1",
+                  "relationship": "HAS_INJURY",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:1",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:2",
+                  "relationship": "MAPS_TO",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:2",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:1-2:3",
+                  "relationship": "AFFECTS",
+                  "direction": "outgoing",
+                  "rule_id": "injury_region_stress"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0",
+              "constraint_type": "preference_ranking",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Jordan Rivera dislikes \"Deadlift\". Preference affects ranking only - this is not a safety exclusion.",
+              "rule_id": "preference_dislike",
+              "source": "graph_traversal",
+              "path_kind": "member_context",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:0",
+                  "label": "Jordan Rivera",
+                  "type": "Member",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:1",
+                  "label": "Deadlift",
+                  "type": "Preference",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-0:1",
+                  "relationship": "DISLIKES",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            },
+            {
+              "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1",
+              "constraint_type": "preference_ranking",
+              "exercise_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d",
+              "exercise_name": "One-Kettlebell Hamstring Walkout",
+              "decision": "excluded",
+              "reason": "Jordan Rivera dislikes \"Deadlift\". Preference affects ranking only - this is not a safety exclusion.",
+              "rule_id": "preference_dislike",
+              "source": "graph_traversal",
+              "path_kind": "exercise_structure",
+              "nodes": [
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:0",
+                  "label": "One-Kettlebell Hamstring Walkout",
+                  "type": "Exercise",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:1",
+                  "label": "lower pull - hip lift",
+                  "type": "MovementPattern",
+                  "properties": {}
+                },
+                {
+                  "id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:2",
+                  "label": "Hip Hinge / Deadlift Family",
+                  "type": "MovementFamily",
+                  "properties": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:0",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:1",
+                  "relationship": "HAS_PATTERN",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                },
+                {
+                  "source_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:1",
+                  "target_id": "0732c6eb-2275-4af3-8276-9bb8be2aa12d:2-1:2",
+                  "relationship": "IN_FAMILY",
+                  "direction": "outgoing",
+                  "rule_id": "preference_dislike"
+                }
+              ],
+              "facts": [],
+              "source_concept": null
+            }
+          ]
+        }
+      ],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-only-dumbbells",
+      "category": "adjustment",
+      "name": "Only use dumbbells",
+      "input_summary": "base + \"Only use dumbbells.\"",
+      "expected": "no plan exercise requires a Kettlebell",
+      "actual": "plan free of Kettlebell; plan free of Barbell",
+      "passed": true,
+      "latency_ms": 144.22,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-quad-focus",
+      "category": "adjustment",
+      "name": "More quad focused",
+      "input_summary": "base + \"Make it more quad focused...\"",
+      "expected": "ranking moves; eligible set unchanged",
+      "actual": "5 down-ranked; eligible set unchanged",
+      "passed": true,
+      "latency_ms": 143.55,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-duration",
+      "category": "adjustment",
+      "name": "Make it 30 minutes",
+      "input_summary": "base + \"Make it 30 minutes.\"",
+      "expected": "validated plan is 30 minutes",
+      "actual": "duration 30 min",
+      "passed": true,
+      "latency_ms": 130.42,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-knee-safety",
+      "category": "adjustment",
+      "name": "Avoid exercises that stress her knee",
+      "input_summary": "base + \"Avoid exercises that stress her knee.\"",
+      "expected": "knee rules still fire; plan stays safe",
+      "actual": "Static Jump still excluded",
+      "passed": true,
+      "latency_ms": 122.0,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-noop",
+      "category": "adjustment",
+      "name": "A no-op adjustment reports no change honestly",
+      "input_summary": "base + \"Keep it as it is.\"",
+      "expected": "diff is empty and carries an explanatory note",
+      "actual": "no change, stated explicitly",
+      "passed": true,
+      "latency_ms": 122.96,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-safety-never-weakened",
+      "category": "adjustment",
+      "name": "No adjustment reintroduces an excluded exercise",
+      "input_summary": "all six adjustments",
+      "expected": "every adjusted plan is disjoint from its exclusion set",
+      "actual": "6/6 adjusted plans safe",
+      "passed": true,
+      "latency_ms": 889.75,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "adj-diff-honesty",
+      "category": "adjustment",
+      "name": "The diff never claims an equivalence the graph lacks",
+      "input_summary": "base + \"Exclude deadlifts.\"",
+      "expected": "'equivalent' / 'replaces' never appear in diff reasons",
+      "actual": "diff explains changes without inventing equivalence",
+      "passed": true,
+      "latency_ms": 152.91,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-excluded-exercise",
+      "category": "validation",
+      "name": "Model returns an excluded exercise",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "rejected and replaced; not in the final plan",
+      "actual": "1 rejected, 1 replaced, 0 unsafe survivors",
+      "passed": true,
+      "latency_ms": 187.14,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-all-excluded",
+      "category": "validation",
+      "name": "Model returns every excluded exercise at once",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "none survive final validation",
+      "actual": "32 rejected, 18 replaced, 0 unsafe survivors",
+      "passed": true,
+      "latency_ms": 170.64,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-hallucinated-id",
+      "category": "validation",
+      "name": "Model invents an exercise id",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "rejected as hallucinated_id",
+      "actual": "1 rejected, 1 replaced, 0 unsafe survivors",
+      "passed": true,
+      "latency_ms": 157.06,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-unavailable-equipment",
+      "category": "validation",
+      "name": "Model returns an exercise needing absent equipment",
+      "input_summary": "Build a full-body workout. She has no barbell, only dumbbells and a kettlebell.",
+      "expected": "rejected; plan requires no unavailable equipment",
+      "actual": "2 rejected, 2 replaced, 0 unsafe survivors",
+      "passed": true,
+      "latency_ms": 134.64,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-outside-candidates",
+      "category": "validation",
+      "name": "Model picks outside the approved candidate set",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "only approved ids survive",
+      "actual": "2 rejected, 2 replaced, 0 unsafe survivors",
+      "passed": true,
+      "latency_ms": 164.66,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-empty-plan-fails-closed",
+      "category": "validation",
+      "name": "Nothing survivable fails closed",
+      "input_summary": "draft of hallucinated ids only, no repair pool",
+      "expected": "UnsafePlanError - never an unvalidated plan",
+      "actual": "UnsafePlanError raised - failed closed",
+      "passed": true,
+      "latency_ms": 0.14,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-duration-preserved",
+      "category": "validation",
+      "name": "Requested duration survives composition",
+      "input_summary": "\"30-minute lower-body workout\"",
+      "expected": "validated plan reports 30 minutes",
+      "actual": "30 minutes",
+      "passed": true,
+      "latency_ms": 93.63,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "val-schema-valid",
+      "category": "validation",
+      "name": "Generated plan matches the published schema",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "sections named warmup/main/cooldown, every id in the catalog",
+      "actual": "3 sections, all ids in catalog",
+      "passed": true,
+      "latency_ms": 76.89,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-metric-trend",
+      "category": "copilot_mcp",
+      "name": "Adherence question routes to the metric-trend tool",
+      "input_summary": "\"How is adherence trending?\"",
+      "expected": "intent=ADHERENCE_TREND, MCP mode, grounded answer",
+      "actual": "intent=ADHERENCE_TREND, mode=mcp, tools=get_member_metric_trend",
+      "passed": true,
+      "latency_ms": 351.97,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-exercise-safety",
+      "category": "copilot_mcp",
+      "name": "Safety question uses the authoritative tool",
+      "input_summary": "\"Is Static Jump safe for her?\"",
+      "expected": "authoritative_safety=True",
+      "actual": "intent=GENERAL_MEMBER_QA, mode=mcp, tools=evaluate_exercise_safety,get_exercise_provenance",
+      "passed": true,
+      "latency_ms": 255.74,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-safety-parity",
+      "category": "copilot_mcp",
+      "name": "MCP safety matches a direct SafetyEngine call",
+      "input_summary": "every catalog exercise",
+      "expected": "tool verdict == engine verdict for all 50",
+      "actual": "50/50 verdicts identical to the engine",
+      "passed": true,
+      "latency_ms": 367.89,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-provenance-tool",
+      "category": "copilot_mcp",
+      "name": "Provenance tool returns real ordered paths",
+      "input_summary": "Static Jump",
+      "expected": "graph path present with real relationships",
+      "actual": "5 graph path(s), e.g. CONTRAINDICATES/HAS_PATTERN - Patellofemoral Pain Syndrome -[CONTRAINDICATES]-> ",
+      "passed": true,
+      "latency_ms": 6.78,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-safe-candidates",
+      "category": "copilot_mcp",
+      "name": "Safe-candidate tool never returns an excluded exercise",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "candidate set disjoint from the exclusion set",
+      "actual": "18 candidates returned, 0 excluded",
+      "passed": true,
+      "latency_ms": 181.12,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-workout-evaluation",
+      "category": "copilot_mcp",
+      "name": "Workout-request evaluation is read-only",
+      "input_summary": "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+      "expected": "composed_workout is null; counts match the engine",
+      "actual": "read-only; eligible=18 excluded=32",
+      "passed": true,
+      "latency_ms": 27.69,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-fallback",
+      "category": "copilot_mcp",
+      "name": "MCP outage falls back to the deterministic dispatcher",
+      "input_summary": "\"How is adherence trending?\" with MCP unreachable",
+      "expected": "mode=fallback, answer still grounded in real numbers",
+      "actual": "MCP unreachable -> deterministic dispatcher answered",
+      "passed": true,
+      "latency_ms": 5.03,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    },
+    {
+      "case_id": "mcp-missing-data-admission",
+      "category": "copilot_mcp",
+      "name": "Missing data produces an admission, not an improvisation",
+      "input_summary": "\"Show me her labs\" with labs removed",
+      "expected": "answer says there are no lab results",
+      "actual": "admitted the absence instead of improvising",
+      "passed": true,
+      "latency_ms": 0.9,
+      "notes": [],
+      "evidence": [],
+      "unsafe_escape": false
+    }
+  ],
+  "latency": {
+    "p50_ms": 12.22,
+    "p95_ms": 187.14,
+    "max_ms": 889.75,
+    "total_ms": 4572.14
+  },
+  "status": "pass"
+}

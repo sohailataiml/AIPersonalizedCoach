@@ -10,14 +10,15 @@ PY ?= python
 BACKEND := backend
 FRONTEND := frontend
 
-.PHONY: help setup dev dev-backend dev-frontend seed test test-frontend lint typecheck build verify verify-ontology docker clean
+.PHONY: help setup dev dev-backend dev-frontend seed test test-frontend eval lint typecheck build verify verify-ontology docker clean
 
 help:
 	@echo "make setup   - install dependencies (backend + frontend)"
 	@echo "make dev     - run backend :8000 and frontend :3000"
 	@echo "make seed    - seed/verify the knowledge graph from a clean state"
 	@echo "make test    - backend tests"
-	@echo "make verify  - tests + lint + typecheck + build + ontology audit + demo scenarios"
+	@echo "make eval    - offline evaluation suite (writes artifacts/evals/)"
+	@echo "make verify  - tests + lint + typecheck + build + ontology audit + evals + demos"
 	@echo "make verify-ontology - re-resolve every SNOMED code at NCI EVS (network)"
 	@echo "make docker  - full stack incl. Neo4j via docker compose"
 
@@ -54,6 +55,13 @@ test-frontend:
 verify-ontology:
 	$(PY) scripts/verify_ontology.py --live
 
+# The offline evaluation suite. Writes artifacts/evals/<run>.json plus
+# latest.json, which is what the System Quality dashboard reads. Exits non-zero
+# if any case fails or any unsafe exercise survives final validation, so it is
+# usable as a CI gate.
+eval:
+	$(PY) scripts/run_evals.py
+
 lint:
 	cd $(BACKEND) && $(PY) -m ruff check app tests
 	cd $(FRONTEND) && npm run lint
@@ -67,6 +75,7 @@ build:
 verify: test lint typecheck build
 	$(PY) scripts/seed_graph.py --dry-run
 	$(PY) scripts/verify_ontology.py
+	$(PY) scripts/run_evals.py
 	$(PY) scripts/demo_scenarios.py
 
 docker:

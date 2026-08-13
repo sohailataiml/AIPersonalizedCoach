@@ -1146,3 +1146,76 @@ With more time:
 - model/provider fallback
 - audit trail persistence
 - real graph visualization
+
+---
+
+## 12. Evaluation and observability
+
+Two systems answering two different questions. They are shown together on the
+System Quality dashboard and deliberately never blended.
+
+### 12.1 Offline evaluation
+
+```text
+scripts/run_evals.py
+   -> EvaluationRunner (app/evaluation/runner.py)
+        -> EvalCase corpus (app/evaluation/cases.py)   71 cases, 8 categories
+        -> real code paths: SafetyEngine, LangGraph workflow, MCP tools
+   -> EvaluationRun (metrics, invariants, per-case results)
+   -> EvaluationArtifactStore -> artifacts/evals/<run>.json + latest.json
+```
+
+Design constraints:
+
+- Cases are **data**, not code. A reviewer can read what the system is expected
+  to do without reading the harness.
+- Every metric carries `numerator` / `denominator`. A percentage is always
+  derived from a ratio the caller can check.
+- Categories are never averaged. One blended score would let a safety escape
+  hide behind a good resolver run.
+- Invariants are **computed from case outcomes**. An invariant with no covering
+  case does not hold - absence of a failure is not a demonstration.
+- `unsafe_escape` is first-class and must be 0.
+
+Artifacts are JSON on disk, not a database: append-only, small, diffable, and
+committable next to the code that produced them.
+
+### 12.2 Runtime tracing
+
+```text
+route handler
+   -> graph_call_scope()            (ContextVar counter)
+   -> workflow.run(...)             (no tracing code inside)
+   -> build_workflow_trace(state)   (post-hoc projection)
+   -> TraceStore                    (bounded in-process ring buffer)
+```
+
+The load-bearing property: **removing the tracing layer cannot change a safety
+decision.** Traces are assembled *after* a run from state that already exists,
+so `SafetyEngine`, the ranker and the validator contain no instrumentation. A
+test asserts identical decisions with and without the layer.
+
+The single exception is `InstrumentedGraphRepository`, a counting pass-through
+that delegates every call untouched and increments an integer.
+
+### 12.3 Trace privacy
+
+The trace models have **no field** for a member payload, chat history, labs, a
+prompt body, a coach question, an MCP payload, or an authorization header - so
+a future caller cannot add one by passing the wrong argument. Recorded instead:
+ids, durations, zone, aggregate counts, rule ids, resolver *method* counts, and
+the classified copilot intent.
+
+Absent values stay absent: token usage is `null` with the offline stub rather
+than 0, and `graph_query_count` is `null` when no counter was installed.
+
+### 12.4 System Quality dashboard
+
+Route `/system`, sidebar item **Quality**. Reads
+`GET /api/system/evaluations/latest`, `/api/system/evaluations`,
+`/api/system/traces` and `/api/system/traces/{request_id}` - all read-only.
+
+Case detail reuses `DecisionPaths`, the same component the coach graph panel
+uses. There is deliberately no second provenance renderer: two renderers of the
+same evidence eventually disagree, and the one in the engineering dashboard is
+the one nobody would notice drifting.

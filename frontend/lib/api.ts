@@ -1,11 +1,14 @@
 import type {
   AdjustWorkoutResponse,
   CopilotResponse,
+  EvaluationHistory,
+  EvaluationRun,
   ExerciseProvenance,
   GenerateWorkoutResponse,
   HealthResponse,
   MemberHistory,
   MemberSummary,
+  TraceListResponse,
 } from './types';
 
 const API_BASE =
@@ -93,6 +96,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /* --- System quality (read-only developer surface) --- */
+
+  /** Null when no evaluation has been run yet — an honest empty state. */
+  latestEvaluation: () =>
+    request<EvaluationRun | null>('/system/evaluations/latest'),
+
+  evaluationHistory: (limit = 10) =>
+    request<EvaluationHistory>(`/system/evaluations?limit=${limit}`),
+
+  traces: (limit = 25) =>
+    request<TraceListResponse>(`/system/traces?limit=${limit}`),
 
   exerciseProvenance: (exerciseId: string) =>
     request<ExerciseProvenance>(
