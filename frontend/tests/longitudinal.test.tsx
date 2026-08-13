@@ -10,7 +10,7 @@
  * trajectory must render no longitudinal claims at all, not a default one.
  */
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -126,7 +126,10 @@ describe('Decision summary tab', () => {
     await openSummary();
 
     expect(screen.getByText('Longitudinal context')).toBeInTheDocument();
-    expect(screen.getByText(/Progression: Hold/i)).toBeInTheDocument();
+    // Scoped to the panel: the pipeline flow above it also reports the
+    // progression state, as the outcome of its own stage.
+    const panel = screen.getByRole('region', { name: 'Longitudinal context' });
+    expect(within(panel).getByText(/Progression: Hold/i)).toBeInTheDocument();
   });
 
   it('renders nothing longitudinal when the backend omitted it', async () => {

@@ -1047,7 +1047,8 @@ const raw = {
             "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Yoga Mat.",
             "Adjustable Bench - Decline is not in the available set."
           ],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "0fa0eb42-797f-4752-9a80-68e2dfb2a935:1-0",
@@ -1072,7 +1073,8 @@ const raw = {
             "No STRESSES edges exist, so no anatomy traversal is possible.",
             "Cannot be certified against Left Knee (recovering)."
           ],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "set_operation"
         },
         {
           "id": "0b6fcb1c-aa47-455b-8a9f-f9d1582745df:0-0",
@@ -1111,7 +1113,8 @@ const raw = {
             "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Yoga Mat.",
             "Pull-Up Bar is not in the available set."
           ],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-0",
@@ -1159,7 +1162,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:0-1",
@@ -1220,7 +1224,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-0",
@@ -1255,7 +1260,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-1",
@@ -1290,7 +1296,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "anatomy_hierarchy"
         },
         {
           "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:1-2",
@@ -1351,7 +1358,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-0",
@@ -1376,7 +1384,8 @@ const raw = {
             "Injury laterality = left.",
             "Unilateral variant loads the injured side."
           ],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "set_operation"
         },
         {
           "id": "02fe4cf5-bb21-4bef-868f-fea1477e2a53:2-1",
@@ -1437,7 +1446,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "0a4d99cf-5075-468e-9551-b9f8efa267f1:0-0",
@@ -1472,7 +1482,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "0a4d99cf-5075-468e-9551-b9f8efa267f1:0-1",
@@ -1507,7 +1518,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "anatomy_hierarchy"
         },
         {
           "id": "0a4d99cf-5075-468e-9551-b9f8efa267f1:0-2",
@@ -1568,7 +1580,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "00678525-7d38-4a9e-8998-a299a209c724:0-0",
@@ -1616,7 +1629,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "00678525-7d38-4a9e-8998-a299a209c724:0-1",
@@ -1677,7 +1691,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "00678525-7d38-4a9e-8998-a299a209c724:1-0",
@@ -1712,7 +1727,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "00678525-7d38-4a9e-8998-a299a209c724:1-1",
@@ -1747,7 +1763,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "anatomy_hierarchy"
         },
         {
           "id": "00678525-7d38-4a9e-8998-a299a209c724:1-2",
@@ -1808,7 +1825,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "01f5a2bb-ecf7-4168-92b3-35bd78592e26:0-0",
@@ -1843,7 +1861,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "01f5a2bb-ecf7-4168-92b3-35bd78592e26:0-1",
@@ -1878,7 +1897,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "anatomy_hierarchy"
         },
         {
           "id": "01f5a2bb-ecf7-4168-92b3-35bd78592e26:0-2",
@@ -1939,7 +1959,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "03ba2166-a5e6-4d0d-9110-ab5b73acdd50:0-0",
@@ -1978,7 +1999,8 @@ const raw = {
             "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Yoga Mat.",
             "BOSU is not in the available set."
           ],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "03ba2166-a5e6-4d0d-9110-ab5b73acdd50:1-0",
@@ -2026,7 +2048,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "03ba2166-a5e6-4d0d-9110-ab5b73acdd50:1-1",
@@ -2087,7 +2110,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "03ba2166-a5e6-4d0d-9110-ab5b73acdd50:2-0",
@@ -2122,7 +2146,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         },
         {
           "id": "03ba2166-a5e6-4d0d-9110-ab5b73acdd50:2-1",
@@ -2157,7 +2182,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "anatomy_hierarchy"
         },
         {
           "id": "03ba2166-a5e6-4d0d-9110-ab5b73acdd50:2-2",
@@ -2218,7 +2244,8 @@ const raw = {
             }
           ],
           "facts": [],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "member_context"
         },
         {
           "id": "07772057-db56-4cfb-ae4b-f98f4cac6b9a:0-0",
@@ -2257,7 +2284,8 @@ const raw = {
             "Available to member (Jordan Rivera): Dumbbell, Flat Bench, Kettlebell, Yoga Mat.",
             "Resistance Band - With Handles is not in the available set."
           ],
-          "source_concept": null
+          "source_concept": null,
+          "path_kind": "exercise_structure"
         }
       ],
       "member_facts": [
@@ -2313,7 +2341,13 @@ const raw = {
       "bias": {
         "volume_bias": "conservative",
         "novelty_bias": "low",
-        "familiar_movement_families": ["hinge", "lunge", "pull", "push", "squat"]
+        "familiar_movement_families": [
+          "hinge",
+          "lunge",
+          "pull",
+          "push",
+          "squat"
+        ]
       }
     }
   },

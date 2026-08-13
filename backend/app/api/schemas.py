@@ -17,6 +17,7 @@ from app.domain.resolution import ResolvedConcept
 from app.domain.trajectory import MemberTrajectory
 from app.domain.workout import GeneratedWorkout, PostValidationReport
 from app.provenance.builder import ProvenanceItem
+from app.provenance.diff import AdjustmentDiff
 
 
 class GenerateWorkoutRequest(BaseModel):
@@ -55,6 +56,34 @@ class GenerateWorkoutResponse(BaseModel):
     # The deterministic longitudinal reading that personalized this plan.
     # Personalization only - it never established safety.
     trajectory: MemberTrajectory | None = None
+
+
+class AdjustWorkoutRequest(BaseModel):
+    """A coach adjustment to an already-generated plan.
+
+    The previous plan is supplied as **ids only**. Nothing about it is fed to
+    the model - it is used solely to compute the deterministic diff after the
+    pipeline has re-run from scratch.
+    """
+
+    member_id: str
+    base_prompt: str = Field(min_length=1, max_length=2000)
+    adjustment: str = Field(min_length=1, max_length=500)
+    duration_minutes: int = Field(default=45, ge=10, le=120)
+    previous_exercise_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class AdjustWorkoutResponse(GenerateWorkoutResponse):
+    """The regenerated plan, plus what changed and why.
+
+    Extends the generate response rather than defining a parallel shape: an
+    adjusted plan carries exactly the same provenance, graph reasoning and
+    safety guarantees, because it went through exactly the same pipeline.
+    """
+
+    adjustment: str
+    effective_prompt: str
+    diff: AdjustmentDiff
 
 
 class CopilotRequest(BaseModel):

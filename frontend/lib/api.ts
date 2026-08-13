@@ -1,4 +1,5 @@
 import type {
+  AdjustWorkoutResponse,
   CopilotResponse,
   ExerciseProvenance,
   GenerateWorkoutResponse,
@@ -66,6 +67,23 @@ export const api = {
     duration_minutes: number;
   }) =>
     request<GenerateWorkoutResponse>('/workouts/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * Apply a coach adjustment. The previous plan is sent as ids only — it is
+   * used to compute the diff, never to seed the model. The backend re-runs the
+   * whole deterministic pipeline.
+   */
+  adjustWorkout: (body: {
+    member_id: string;
+    base_prompt: string;
+    adjustment: string;
+    duration_minutes: number;
+    previous_exercise_ids: string[];
+  }) =>
+    request<AdjustWorkoutResponse>('/workouts/adjust', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

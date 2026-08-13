@@ -18,7 +18,7 @@ from app.domain.resolution import ResolvedConcept
 from app.domain.safety import SafetyDecision
 from app.domain.trajectory import MemberTrajectory
 from app.domain.workout import WorkoutIntent
-from app.ontology.loader import Ontology
+from app.ontology.loader import FocusTarget, Ontology
 from app.safety import policies
 
 BASE_SCORE = 50.0
@@ -164,25 +164,43 @@ def _families_of(exercise: Exercise, ontology: Ontology) -> set[str]:
 def _focus_targets(
     intent: WorkoutIntent, resolved: list[ResolvedConcept], ontology: Ontology
 ) -> tuple[set[str], set[str]]:
-    muscles: set[str] = set()
-    joints: set[str] = set()
+    """The muscles and joints the coach asked for.
+
+    **The narrowest named focus wins.** A coach who says "lower-body ... make it
+    more quad focused" has *sharpened* the brief, and unioning the two would
+    make the correction do nothing: `lower_body` already contains `quads`, so
+    every calf and glute exercise would keep matching. Taking the most specific
+    target instead is what lets an adjustment actually re-rank.
+
+    A target with no muscle groups (``full_body``) means "no restriction" and is
+    treated as the broadest, never the narrowest.
+    """
+    targets: list[FocusTarget] = []
 
     focus_text = " ".join(intent.requested_focus).lower()
     for target in ontology.focus_targets.values():
         if any(alias in focus_text for alias in target.aliases):
-            muscles.update(target.muscle_groups)
-            joints.update(target.joints)
+            targets.append(target)
 
     for concept in resolved:
         if not concept.is_resolved or not concept.canonical_id:
             continue
         if concept.canonical_id.startswith("focus:"):
             target = ontology.focus_targets.get(concept.canonical_id.split(":", 1)[1])
-            if target:
-                muscles.update(target.muscle_groups)
-                joints.update(target.joints)
+            if target and target not in targets:
+                targets.append(target)
 
-    return muscles, joints
+    specific = [t for t in targets if t.muscle_groups]
+    if specific:
+        narrowest = min(specific, key=lambda t: len(t.muscle_groups))
+        return set(narrowest.muscle_groups), set(narrowest.joints)
+
+    # Only broad targets (or none): fall back to their union, which for
+    # full_body is empty and correctly imposes no focus at all.
+    return (
+        {m for t in targets for m in t.muscle_groups},
+        {j for t in targets for j in t.joints},
+    )
 
 
 def _goal_alignment(exercise: Exercise, member: MemberContext) -> tuple[float, str]:

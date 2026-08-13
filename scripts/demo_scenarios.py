@@ -1,11 +1,16 @@
 #!/usr/bin/env python
-"""Run the three assessment demo scenarios end to end and assert the outcomes.
+"""Run the demo scenarios end to end and assert the outcomes.
 
     python scripts/demo_scenarios.py
 
+Four scenarios: the three assessment cases (injury, limited equipment, explicit
+exclusion) plus a live interactive adjustment, preceded by the member's
+longitudinal reading.
+
 This is executable documentation: it drives the real workflow (resolver ->
-graph traversal -> safety -> LLM composition -> post-generation gate) and fails
-loudly if any scenario stops behaving as documented in the README.
+longitudinal analysis -> graph traversal -> safety -> LLM composition ->
+post-generation gate) and fails loudly if anything stops behaving as documented
+in the README.
 """
 
 from __future__ import annotations
@@ -99,6 +104,145 @@ def _report_longitudinal_context(services) -> list[str]:
     return problems
 
 
+ADJUSTMENT_BASE = (
+    "Create a 45-minute lower-body workout. Her left knee is bothering her "
+    "and she only has dumbbells and a kettlebell."
+)
+
+ADJUSTMENTS = [
+    {
+        "text": "Make it more quad focused without aggravating her knee.",
+        # Focus sharpens the ranking; the knee constraint must still hold.
+        "expect_still_excluded": ["Static Jump", "Vertical Jump to Broad Jump"],
+        "expect_downranking": True,
+        "expect_newly_excluded": 0,
+    },
+    {
+        "text": "Exclude deadlifts.",
+        # No catalog exercise is named "deadlift" - this must reach the family.
+        "expect_newly_excluded_names": [
+            "One-Kettlebell Hamstring Walkout",
+            "Med Ball Hamstring Walkout",
+        ],
+        "expect_still_excluded": ["Static Jump"],
+        "expect_downranking": False,
+        "expect_newly_excluded": 1,
+    },
+]
+
+
+async def _run_adjustment_demo(services) -> list[str]:
+    """Generate once, then adjust twice, asserting the graph does the work."""
+    from app.agents.adjustment import adjust_workout  # noqa: PLC0415
+
+    problems: list[str] = []
+
+    print("=" * 78)
+    print("Scenario 4 - Interactive adjustment (graph-driven)")
+    print(f'  base: "{ADJUSTMENT_BASE}"')
+
+    state = await services.workflow.run(
+        WorkoutRequest(member_id=MEMBER_ID, prompt=ADJUSTMENT_BASE, duration_minutes=45)
+    )
+    plan_ids = [
+        item.exercise_id
+        for section in state["generated_workout"].sections
+        for item in section.exercises
+    ]
+    print(f"\n  initial plan ({len(plan_ids)}):")
+    _print_plan(state["generated_workout"])
+    print(
+        f"  eligible={state['provenance'].counts['eligible']} "
+        f"excluded={state['provenance'].counts['excluded']}"
+    )
+
+    catalog = {e.name: e.id for e in services.repository.list_exercises()}
+
+    for spec in ADJUSTMENTS:
+        outcome = await adjust_workout(
+            services=services,
+            member_id=MEMBER_ID,
+            base_prompt=ADJUSTMENT_BASE,
+            adjustment=spec["text"],
+            base_duration=45,
+            previous_exercise_ids=plan_ids,
+        )
+        adjusted, diff = outcome["state"], outcome["diff"]
+        decisions = adjusted["safety_decisions"]
+
+        print(f'\n  adjustment: "{spec["text"]}"')
+        print(
+            "    resolved: "
+            + ", ".join(
+                f"'{c.source_text}'->{c.canonical_id}"
+                for c in adjusted["resolved_concepts"]
+                if c.is_resolved
+            )
+        )
+        print(
+            f"    trajectory: progression={adjusted['trajectory'].progression.state} "
+            f"volume={adjusted['trajectory'].bias.volume_bias}"
+        )
+        print(
+            f"    graph safety: eligible={adjusted['provenance'].counts['eligible']} "
+            f"excluded={adjusted['provenance'].counts['excluded']} "
+            f"| post-validation passed={adjusted['post_validation'].passed}"
+        )
+        _print_plan(adjusted["generated_workout"], indent=4)
+        print(f"    diff: {diff.counts}")
+        for change in diff.removed[:3]:
+            flag = "now ineligible" if change.now_excluded else "re-ranked out"
+            print(f"      - {change.exercise} [{flag}] {change.reasons[0][:64]}")
+        for change in diff.added[:3]:
+            print(f"      + {change.exercise}")
+        for change in diff.downranked[:2]:
+            print(
+                f"      v {change.exercise} {change.score_before} -> {change.score_after}"
+            )
+        for note in diff.notes:
+            print(f"      note: {note[:96]}")
+
+        # --- assertions ---------------------------------------------------
+        planned = {
+            item.exercise_id
+            for section in adjusted["generated_workout"].sections
+            for item in section.exercises
+        }
+        excluded_ids = {eid for eid, d in decisions.items() if d.is_excluded}
+        if planned & excluded_ids:
+            problems.append(f"adjustment '{spec['text']}': plan contains an excluded id")
+
+        for name in spec.get("expect_still_excluded", []):
+            if not decisions[catalog[name]].is_excluded:
+                problems.append(
+                    f"adjustment '{spec['text']}': {name} should remain excluded"
+                )
+        for name in spec.get("expect_newly_excluded_names", []):
+            if not decisions[catalog[name]].is_excluded:
+                problems.append(
+                    f"adjustment '{spec['text']}': {name} should have been excluded"
+                )
+        if spec["expect_downranking"] and not diff.downranked:
+            problems.append(f"adjustment '{spec['text']}': expected ranking to move")
+        if diff.counts["newly_excluded"] < spec["expect_newly_excluded"]:
+            problems.append(
+                f"adjustment '{spec['text']}': expected at least "
+                f"{spec['expect_newly_excluded']} newly excluded"
+            )
+        if not adjusted["post_validation"].passed:
+            problems.append(f"adjustment '{spec['text']}': post-validation did not pass")
+
+    print()
+    return problems
+
+
+def _print_plan(workout, indent: int = 4) -> None:
+    pad = " " * indent
+    for section in workout.sections:
+        names = ", ".join(item.name for item in section.exercises)
+        print(f"{pad}{section.name:<9} {names}")
+
+
 async def run() -> int:
     settings = get_settings()
     services = build_services(settings)
@@ -187,6 +331,8 @@ async def run() -> int:
                 print(f"    {evidence.rendered}")
         print()
 
+    failures.extend(await _run_adjustment_demo(services))
+
     services.close()
 
     print("=" * 78)
@@ -195,7 +341,7 @@ async def run() -> int:
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("All three demo scenarios behaved as documented.")
+    print("All demo scenarios behaved as documented.")
     return 0
 
 

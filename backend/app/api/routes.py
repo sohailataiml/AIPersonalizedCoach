@@ -8,8 +8,11 @@ import uuid
 
 from fastapi import APIRouter, HTTPException
 
+from app.agents.adjustment import adjust_workout
 from app.api.deps import get_services
 from app.api.schemas import (
+    AdjustWorkoutRequest,
+    AdjustWorkoutResponse,
     CopilotChatResponse,
     CopilotRequest,
     ExerciseProvenanceResponse,
@@ -82,7 +85,20 @@ async def generate_workout(payload: GenerateWorkoutRequest) -> GenerateWorkoutRe
         timings["total"],
     )
 
-    return GenerateWorkoutResponse(
+    return _workout_response(GenerateWorkoutResponse, state, request_id, timings, services)
+
+
+def _workout_response(model, state, request_id: str, timings: dict, services, **extra):
+    """Project workflow state onto a response model.
+
+    Shared by generation and adjustment so an adjusted plan cannot drift from a
+    generated one: both report the same provenance, the same safety summary and
+    the same graph reasoning, because both ran the same pipeline.
+    """
+    provenance = state["provenance"]
+    report = state["post_validation"]
+
+    return model(
         request_id=request_id,
         workout=state["generated_workout"],
         resolved_concepts=provenance.resolved_concepts,
@@ -106,6 +122,62 @@ async def generate_workout(payload: GenerateWorkoutRequest) -> GenerateWorkoutRe
         graph_backend=services.backend,
         graph_reasoning=state.get("graph_reasoning"),
         trajectory=state.get("trajectory"),
+        **extra,
+    )
+
+
+@router.post("/workouts/adjust", response_model=AdjustWorkoutResponse)
+async def adjust_workout_route(payload: AdjustWorkoutRequest) -> AdjustWorkoutResponse:
+    """Apply a coach adjustment by re-running the whole deterministic pipeline.
+
+    The model never edits the previous plan. The adjustment becomes part of a
+    new coach request, so every safety decision is re-derived from the graph -
+    which is the only way "avoid anything that stresses her knee" can be
+    answered by traversal rather than by the model's reading of the sentence.
+    """
+    services = get_services()
+
+    try:
+        outcome = await adjust_workout(
+            services=services,
+            member_id=payload.member_id,
+            base_prompt=payload.base_prompt,
+            adjustment=payload.adjustment,
+            base_duration=payload.duration_minutes,
+            previous_exercise_ids=payload.previous_exercise_ids,
+        )
+    except UnsafePlanError as exc:
+        logger.warning("adjustment produced no safe plan: %s", exc)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    state = outcome["state"]
+    diff = outcome["diff"]
+    timings = dict(state.get("timings") or {})
+    timings["total"] = outcome["elapsed_ms"]
+
+    logger.info(
+        "adjust request_id=%s member=%s removed=%d added=%d downranked=%d "
+        "newly_excluded=%d total_ms=%.1f",
+        outcome["request_id"],
+        payload.member_id,
+        diff.counts.get("removed", 0),
+        diff.counts.get("added", 0),
+        diff.counts.get("downranked", 0),
+        diff.counts.get("newly_excluded", 0),
+        timings["total"],
+    )
+
+    return _workout_response(
+        AdjustWorkoutResponse,
+        state,
+        outcome["request_id"],
+        timings,
+        services,
+        adjustment=payload.adjustment,
+        effective_prompt=outcome["effective_prompt"],
+        diff=diff,
     )
 
 

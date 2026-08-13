@@ -175,6 +175,20 @@ export interface GraphTraceEdge {
   rule_id: string | null;
 }
 
+/**
+ * Which half of the reasoning a path belongs to.
+ *
+ * Classified by the **backend** from the node kinds the safety engine recorded.
+ * The UI groups on this value and never infers it from edge names or reason
+ * text — inferring it would be frontend-invented structure inside the one panel
+ * whose purpose is to show only what the graph holds.
+ */
+export type PathKind =
+  | 'member_context'
+  | 'anatomy_hierarchy'
+  | 'exercise_structure'
+  | 'set_operation';
+
 export interface GraphTraversal {
   id: string;
   constraint_type: ConstraintType;
@@ -184,6 +198,8 @@ export interface GraphTraversal {
   reason: string;
   rule_id: string | null;
   source: 'graph_traversal' | 'deterministic_set_operation';
+  /** Optional: older backends omit it, and the UI then shows one flat list. */
+  path_kind?: PathKind;
   nodes: GraphTraceNode[];
   edges: GraphTraceEdge[];
   facts: string[];
@@ -329,6 +345,42 @@ export interface GenerateWorkoutResponse {
   graph_reasoning?: GraphReasoning | null;
   /** Optional: the longitudinal reading that personalized this plan. */
   trajectory?: MemberTrajectory | null;
+}
+
+/* ---- Workout adjustment ---- */
+
+export type ChangeKind = 'removed' | 'added' | 'downranked';
+
+export interface PlanChange {
+  exercise_id: string;
+  exercise: string;
+  kind: ChangeKind;
+  reasons: string[];
+  rule_ids: string[];
+  score_before: number | null;
+  score_after: number | null;
+  /** True when the adjustment made this ineligible, not merely unselected. */
+  now_excluded: boolean;
+}
+
+export interface AdjustmentDiff {
+  removed: PlanChange[];
+  added: PlanChange[];
+  downranked: PlanChange[];
+  retained_ids: string[];
+  counts: Record<string, number>;
+  notes: string[];
+}
+
+/**
+ * An adjusted plan is a *superset* of a generated one: it went through the
+ * identical pipeline, so it carries the same provenance and safety guarantees,
+ * plus what changed.
+ */
+export interface AdjustWorkoutResponse extends GenerateWorkoutResponse {
+  adjustment: string;
+  effective_prompt: string;
+  diff: AdjustmentDiff;
 }
 
 export interface Goal {

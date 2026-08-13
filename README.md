@@ -34,6 +34,7 @@ The two knowledge graphs:
 - [Concept resolution](#concept-resolution)
 - [Deterministic safety engine](#deterministic-safety-engine)
 - [Longitudinal reasoning](#longitudinal-reasoning)
+- [Interactive workout adjustment](#interactive-workout-adjustment)
 - [Agentic workflow](#agentic-workflow)
 - [Post-generation safety gate](#post-generation-safety-gate)
 - [Provenance](#provenance)
@@ -631,6 +632,92 @@ select one.
 
 ---
 
+## Interactive workout adjustment
+
+The PRD requires adjustment *"driven by the graph"*. The load-bearing rule here
+is what the model is **not** allowed to do:
+
+> **The LLM never edits the existing plan.**
+
+An adjustment is not a patch instruction. It is a new deterministic request that
+re-runs the entire pipeline —
+[`backend/app/agents/adjustment.py`](backend/app/agents/adjustment.py):
+
+```
+existing plan + "exclude deadlifts"
+   → combined coach request      (the adjustment becomes its own clause)
+   → parse intent + resolve concepts
+   → longitudinal context
+   → deterministic SafetyEngine
+   → rank candidates
+   → LLM recomposition           (approved ids only)
+   → deterministic final validation
+   → provenance + diff
+```
+
+Asking a model to "remove the deadlifts from this plan" would put it in charge
+of a safety decision and would silently keep whatever it failed to notice.
+Re-running means *"avoid anything that stresses her knee"* is answered by
+traversal, not by the model's reading of a sentence. The previous plan is sent
+as **ids only**, used solely to compute the diff — it never reaches the prompt.
+
+`POST /api/workouts/adjust` returns everything `generate` returns, plus the diff.
+
+### The five adjustments, and what actually happens
+
+| Coach says | Mechanism | Measured result |
+|---|---|---|
+| *"Exclude deadlifts"* | resolves to `movement_family:hinge`, expands to patterns → exercises | **1 newly ineligible** (One-Kettlebell Hamstring Walkout), 1 added; eligible 16 → 15 |
+| *"Only use dumbbells"* | later restrictive clause supersedes earlier availability, equipment filter re-runs | kettlebell work becomes **ineligible**; no plan exercise requires a Kettlebell |
+| *"More quad focused"* | narrowest named focus wins over `lower_body` | **5 exercises down-ranked** (87→77 etc.); eligible set unchanged |
+| *"Make it 30 minutes"* | duration resolved by the caller, not a regex | plan is 30 min and shrinks 9 → 7 exercises |
+| *"Avoid exercises that stress her knee"* | re-runs every injury rule | **no change — and it says so.** The knee injury was already in the graph; 34 of 50 stayed excluded |
+
+Three of these needed a real fix rather than a prompt:
+
+- **`"only use dumbbells"` did nothing at first.** The combined request holds two
+  restrictive clauses, and equipment availability was accumulating across both,
+  so the correction was silently ignored. A later restrictive clause now
+  supersedes earlier *availability* — it never re-admits something excluded.
+- **`"make it more quad focused"` did nothing at first.** `lower_body` already
+  contains `quads`, so unioning the focus targets left every calf and glute
+  exercise matching. The **narrowest** named focus now wins, which is what lets
+  an adjustment sharpen a brief.
+- **`"make it 30 minutes"` returned a 45-minute plan.** The combined prompt
+  contains both durations and the regex took the first. The caller now resolves
+  the duration explicitly and passes `duration_is_explicit`.
+
+Also fixed on the way: `"make it 30 minutes"` offered the token `it` to the
+resolver, which fuzzy-matched it onto **Stability Ball** — a confident equipment
+constraint invented from a pronoun. Pronouns and fillers are now cue tokens.
+
+### Safety cannot be weakened by an adjustment
+
+Asserted in [`test_adjustment.py`](backend/tests/test_adjustment.py):
+
+- every adjusted plan is disjoint from the adjusted exclusion set;
+- a focus request never resurrects a plyometric or a barbell exercise;
+- an adversarial model told to keep the excluded hinge work is still rejected by
+  the post-generation gate;
+- validation still fails closed when nothing survives.
+
+### The diff, and what it refuses to say
+
+`removed` distinguishes **now ineligible** (a safety event) from **re-ranked
+out** (not one). `added` is explained by the exercise's *own* inclusion reasons,
+and `downranked` carries real before/after scores from re-running the
+deterministic half of the original request — no second LLM call.
+
+What it will not do is claim an added exercise *replaces* a removed one. The
+graph encodes no equivalence between them; the ranker simply scored differently
+once the constraints changed. A test asserts the words "equivalent" and
+"replaces" never appear.
+
+When nothing changes, the diff says so and states how many rules re-ran, rather
+than rendering an empty panel that reads like a failure.
+
+---
+
 ## Post-generation safety gate
 
 The single most important module:
@@ -881,7 +968,7 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**315 backend tests and 104 frontend tests, all passing**, deliberately
+**349 backend tests and 127 frontend tests, all passing**, deliberately
 concentrated on the paths where a bug produces a *confidently wrong* answer
 rather than a visible failure.
 
@@ -898,10 +985,13 @@ backend/tests/test_ontology.py    37   ontology grounding: local ids stay
 backend/tests/test_trajectory.py  44   longitudinal reasoning: safety stays
                                        authoritative, nothing medical is
                                        inferred, insufficient data is an answer
+backend/tests/test_adjustment.py  28   graph-driven adjustment: every change
+                                       re-runs safety, nothing is fabricated
 backend/tests/test_copilot*.py         grounding, missing data, chart correctness
 backend/tests/test_mcp_tools.py        MCP parity with a direct engine call
-frontend/tests/                  104   graph reasoning, replay, ontology
-                                       grounding, longitudinal context
+frontend/tests/                  127   graph reasoning, replay, ontology
+                                       grounding, longitudinal context,
+                                       path viewer, adjustment + diff
 ```
 
 Run them with `make test` (backend) and `npm test` in `frontend/`.
@@ -1062,8 +1152,15 @@ This is an assessment prototype, not a production system. Specifically:
   system does not solve a true time budget from `estimated_rep_duration`.
 - **The embedding pass is lexical.** It catches morphological variants, not
   semantic paraphrase ("her kneecap grinds" would not resolve).
-- **No streaming**, no graph visualisation in-app (the Neo4j browser covers it),
-  and no evaluation harness beyond the test suite.
+- **No streaming**, and no evaluation harness beyond the test suite.
+- **The in-app graph view is a focused path viewer, not a network diagram.** It
+  renders the exact paths the engine walked, grouped by a backend-assigned
+  `path_kind`. It deliberately does not draw the whole graph — the Neo4j browser
+  covers that, and a force-directed blob would explain less.
+- **Adjustment is stateless.** Each adjustment re-runs from the base prompt plus
+  one instruction; adjustments do not compose across turns. Asking to exclude
+  deadlifts and then to use only dumbbells applies the second to the original
+  brief, not to the already-adjusted one.
 - **Backend/frontend contract is not codegen-verified.**
 
 ---

@@ -47,22 +47,46 @@ CUE_TOKENS = {
     "her", "his", "their", "has", "have", "is", "are", "bothering", "hurts", "hurting",
     "pain", "painful", "sore", "create", "build", "make", "workout", "session", "plan",
     "give", "want", "need", "please", "with", "and", "or", "a", "an", "the",
+    # Pronouns and fillers. Without these, "make it 30 minutes" offers "it" to
+    # the resolver, which fuzzy-matched it onto Stability Ball ("exercise ball")
+    # - a confident wrong equipment constraint from a word carrying no meaning.
+    "it", "its", "this", "that", "these", "those", "them", "one", "some", "more",
+    "less", "keep", "use", "using", "do", "add", "put", "swap", "change", "focus",
+    "focused", "instead", "still", "also", "then", "now", "today",
 }
 
 CLAUSE_SPLIT = re.compile(r"[.;,!?\n]+|\bbut\b|\bthough\b|\bhowever\b", re.I)
+
+
+def extract_duration(text: str) -> int | None:
+    """The duration stated in ``text``, if any.
+
+    Exposed so a caller can resolve competing durations itself - an adjusted
+    request contains the original prompt and the new instruction, and "whichever
+    the regex finds first" is not a defensible rule for choosing between them.
+    """
+    match = DURATION_RE.search(text or "")
+    return int(match.group(1)) if match else None
 
 
 def parse_intent(
     prompt: str,
     duration_minutes: int,
     resolver: ConceptResolver,
+    *,
+    duration_is_explicit: bool = False,
 ) -> tuple[WorkoutIntent, list[ResolvedConcept]]:
-    """Return the parsed intent plus every resolution attempt (for the UI)."""
+    """Return the parsed intent plus every resolution attempt (for the UI).
+
+    ``duration_is_explicit`` makes ``duration_minutes`` final and skips the
+    in-prompt duration scan. Default False, so ordinary generation is unchanged.
+    """
     intent = WorkoutIntent(duration_minutes=duration_minutes)
 
-    duration_match = DURATION_RE.search(prompt)
-    if duration_match:
-        intent.duration_minutes = int(duration_match.group(1))
+    if not duration_is_explicit:
+        duration_match = DURATION_RE.search(prompt)
+        if duration_match:
+            intent.duration_minutes = int(duration_match.group(1))
 
     intent.equipment_is_restrictive = bool(RESTRICTIVE_CUES.search(prompt))
 
@@ -71,7 +95,16 @@ def parse_intent(
 
     for clause in _clauses(prompt):
         flags = _classify(clause)
-        for concept in _resolve_spans(clause, resolver):
+        concepts = _resolve_spans(clause, resolver)
+
+        # A later restrictive clause supersedes earlier availability. This is
+        # what makes adjustment work: "...only dumbbells and a kettlebell" then
+        # "only use dumbbells" must end with dumbbells alone, not the union.
+        # Accumulating both would silently ignore the coach's correction.
+        if flags.restrictive and any(c.concept_type == "equipment" for c in concepts):
+            _supersede_equipment(intent, by_concept, resolved)
+
+        for concept in concepts:
             assert concept.canonical_id is not None
             previous = by_concept.get(concept.canonical_id)
             if previous is not None and previous.confidence >= concept.confidence:
@@ -192,7 +225,11 @@ def _bucket(intent: WorkoutIntent, concept: ResolvedConcept, flags: _Flags) -> N
         return
 
     if concept_type == "anatomy":
-        if flags.injury:
+        # An exclusion cue over a body region names something to protect, not
+        # something to train: "avoid anything that stresses her knee" must not
+        # make the knee a ranking *target*, which is what treating it as focus
+        # would do.
+        if flags.injury or flags.exclusion:
             intent.injury_mentions.append(text)
         else:
             intent.requested_focus.append(text)
@@ -200,6 +237,34 @@ def _bucket(intent: WorkoutIntent, concept: ResolvedConcept, flags: _Flags) -> N
 
     if concept_type == "muscle":
         intent.requested_focus.append(text)
+
+
+def _supersede_equipment(
+    intent: WorkoutIntent,
+    by_concept: dict[str, ResolvedConcept],
+    resolved: list[ResolvedConcept],
+) -> None:
+    """Drop equipment *availability* declared before a later restrictive clause.
+
+    Only ``equipment_mentions`` is cleared. Equipment the coach **excluded**
+    ("no barbell") stays excluded - a later "only use dumbbells" narrows what is
+    available, it never re-admits something that was banned.
+
+    The concepts themselves stay in ``resolved`` so the UI still shows every
+    phrase that was understood; what changes is which bucket governs the
+    request.
+    """
+    superseded = list(intent.equipment_mentions)
+    if not superseded:
+        return
+
+    intent.equipment_mentions.clear()
+    for text in superseded:
+        for concept in list(resolved):
+            if concept.source_text == text and concept.concept_type == "equipment":
+                # Free the canonical id so the later clause's mention of the
+                # same item is not discarded as a duplicate.
+                by_concept.pop(concept.canonical_id or "", None)
 
 
 def _unbucket(intent: WorkoutIntent, concept: ResolvedConcept) -> None:

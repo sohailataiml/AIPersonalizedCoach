@@ -18,6 +18,14 @@ class WorkoutRequest(BaseModel):
     member_id: str
     prompt: str
     duration_minutes: int = Field(default=45, ge=10, le=120)
+    duration_is_explicit: bool = False
+    """Take ``duration_minutes`` as final, ignoring any duration in the prompt.
+
+    Needed by adjustment: an adjusted request carries the original prompt *and*
+    the new instruction, so the prompt contains two durations ("45-minute ...
+    make it 30 minutes"). The caller resolves which one wins deterministically
+    and sets this, rather than leaving a regex to pick whichever came first.
+    """
 
 
 class WorkoutIntent(BaseModel):

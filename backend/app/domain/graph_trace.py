@@ -39,6 +39,27 @@ EvidenceSource = Literal["graph_traversal", "deterministic_set_operation"]
 deterministic but are not graph walks. Labelling them separately keeps the
 "this came from the graph" claim precise."""
 
+PathKind = Literal[
+    "member_context", "anatomy_hierarchy", "exercise_structure", "set_operation"
+]
+"""Which half of the reasoning a path belongs to.
+
+Classified here, from the node *kinds* the engine already recorded, so the UI
+never has to infer it - inferring a path's role from edge names or reason text
+would be exactly the frontend-invented structure this module exists to prevent.
+
+* ``member_context``  - walks the member's own graph
+  (Jordan -HAS_INJURY-> Left Knee -MAPS_TO-> PFPS -AFFECTS-> Patellofemoral Joint)
+* ``anatomy_hierarchy`` - walks PART_OF between regions
+  (Patellofemoral Joint -PART_OF-> Knee). Given its own kind because this is the
+  hop the whole design rests on: the injury sits at a sub-structure while the
+  catalog annotates the joint above it.
+* ``exercise_structure`` - walks the catalog
+  (Static Jump -HAS_PATTERN-> cardio - plyometric)
+* ``set_operation``   - no edges were walked; the finding is a deterministic
+  set difference or a data gap, stated as facts.
+"""
+
 
 class GraphTraceNode(BaseModel):
     id: str
@@ -66,6 +87,7 @@ class GraphTraversal(BaseModel):
     reason: str
     rule_id: str | None = None
     source: EvidenceSource = "graph_traversal"
+    path_kind: PathKind = "exercise_structure"
     nodes: list[GraphTraceNode] = Field(default_factory=list)
     edges: list[GraphTraceEdge] = Field(default_factory=list)
     facts: list[str] = Field(default_factory=list)

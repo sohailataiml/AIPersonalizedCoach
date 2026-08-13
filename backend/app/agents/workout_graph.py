@@ -143,7 +143,10 @@ class WorkoutWorkflow:
         started = time.perf_counter()
         request = state["request"]
         intent, resolved = parse_intent(
-            request.prompt, request.duration_minutes, self._resolver
+            request.prompt,
+            request.duration_minutes,
+            self._resolver,
+            duration_is_explicit=request.duration_is_explicit,
         )
         return {
             "intent": intent,

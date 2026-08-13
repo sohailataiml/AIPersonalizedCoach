@@ -531,6 +531,26 @@ focus_targets:
     muscle_groups: [lats, upper back, middle back, biceps, traps]
     joints: [shoulder, elbow]
 
+  # Single-muscle focuses a coach actually asks for by name. Without these,
+  # "make it more quad focused" resolves to nothing and the adjustment silently
+  # does nothing - the failure mode this project exists to avoid. Muscle-group
+  # names are taken verbatim from the catalog's `muscle_groups` values.
+  quads:
+    label: Quad Focus
+    aliases: [quad, quads, quadriceps, quad focused, quad-focused, quad focus]
+    muscle_groups: [quads]
+    joints: [knee, hip]
+  glutes:
+    label: Glute Focus
+    aliases: [glute, glutes, glute focused, glute-focused, glute focus, posterior chain]
+    muscle_groups: [glutes, hamstrings]
+    joints: [hip]
+  hamstrings:
+    label: Hamstring Focus
+    aliases: [hamstring, hamstrings, hams, hamstring focused]
+    muscle_groups: [hamstrings]
+    joints: [hip, knee]
+
 # Muscle-group grounding.
 #
 # The catalog's 19 muscle groups are product taxonomy labels, not anatomical

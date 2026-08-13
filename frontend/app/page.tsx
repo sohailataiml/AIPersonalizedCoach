@@ -16,8 +16,12 @@ import {
   SCENARIOS,
   WorkoutGeneratorCard,
 } from '@/components/workout/WorkoutGeneratorCard';
+import {
+  AdjustmentDiffView,
+  WorkoutAdjustment,
+} from '@/components/workout/WorkoutAdjustment';
 import { DEFAULT_MEMBER_ID, api } from '@/lib/api';
-import type { GenerateWorkoutResponse } from '@/lib/types';
+import type { AdjustmentDiff, GenerateWorkoutResponse } from '@/lib/types';
 
 export default function DashboardPage() {
   const memberId = DEFAULT_MEMBER_ID;
@@ -28,6 +32,13 @@ export default function DashboardPage() {
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [turns, setTurns] = useState<CopilotTurn[]>([]);
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
+  // The diff belongs to the last adjustment, so it is cleared whenever a fresh
+  // plan is generated - showing a stale diff beside a new plan would misreport
+  // what changed.
+  const [adjustment, setAdjustment] = useState<{
+    text: string;
+    diff: AdjustmentDiff;
+  } | null>(null);
 
   const member = useQuery({
     queryKey: ['member', memberId],
@@ -50,6 +61,7 @@ export default function DashboardPage() {
       }),
     onSuccess: (data) => {
       setResult(data);
+      setAdjustment(null);
       setGeneratedAt(new Date());
       // Default the inspector to the first removed exercise, which is the most
       // interesting thing a reviewer can look at.
@@ -57,6 +69,32 @@ export default function DashboardPage() {
         (item) => item.decision === 'filtered',
       );
       setSelectedExerciseId(firstFiltered?.exercise_id ?? null);
+    },
+  });
+
+  const adjust = useMutation({
+    mutationFn: (text: string) =>
+      api.adjustWorkout({
+        member_id: memberId,
+        base_prompt: prompt,
+        adjustment: text,
+        duration_minutes: duration,
+        previous_exercise_ids:
+          result?.workout.sections.flatMap((section) =>
+            section.exercises.map((exercise) => exercise.exercise_id),
+          ) ?? [],
+      }),
+    onSuccess: (data) => {
+      // The adjusted response is a full plan with its own provenance and graph
+      // reasoning, so it simply replaces the current result.
+      setResult(data);
+      setAdjustment({ text: data.adjustment, diff: data.diff });
+      setGeneratedAt(new Date());
+      const firstRemoved = data.diff.removed[0]?.exercise_id;
+      const firstFiltered = data.filtered_exercises.find(
+        (item) => item.decision === 'filtered',
+      );
+      setSelectedExerciseId(firstRemoved ?? firstFiltered?.exercise_id ?? null);
     },
   });
 
@@ -168,6 +206,23 @@ export default function DashboardPage() {
                 result={result}
                 onInspect={inspect}
               />
+
+              {result ? (
+                <div className="card mt-4">
+                  <WorkoutAdjustment
+                    onAdjust={(text) => adjust.mutate(text)}
+                    isPending={adjust.isPending}
+                    error={adjust.error as Error | null}
+                    disabled={!result}
+                  />
+                  {adjustment ? (
+                    <AdjustmentDiffView
+                      diff={adjustment.diff}
+                      adjustment={adjustment.text}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div id="copilot">

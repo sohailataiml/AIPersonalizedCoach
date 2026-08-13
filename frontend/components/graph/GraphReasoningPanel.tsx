@@ -19,7 +19,9 @@ import type {
 import { LlmBoundary } from './LlmBoundary';
 import { LongitudinalContext } from './LongitudinalContext';
 import { GroundingDetail } from './OntologyGrounding';
-import { CONSTRAINT_LABEL, CONSTRAINT_TONE, TraversalPath } from './TraversalPath';
+import { DecisionPaths } from './DecisionPaths';
+import { PipelineFlow } from './PipelineFlow';
+import { CONSTRAINT_LABEL, CONSTRAINT_TONE } from './TraversalPath';
 import { TraversalReplay } from './TraversalReplay';
 
 type TabId = 'concepts' | 'traversal' | 'replay' | 'summary';
@@ -198,7 +200,11 @@ export function GraphReasoningPanel({
           />
         ) : null}
         {tab === 'summary' ? (
-          <SummaryTab reasoning={reasoning} trajectory={result.trajectory ?? null} />
+          <SummaryTab
+            reasoning={reasoning}
+            trajectory={result.trajectory ?? null}
+            timings={result.timings_ms}
+          />
         ) : null}
       </div>
     </Card>
@@ -330,21 +336,25 @@ function TraversalTab({
               />
             </div>
 
-            <div className="space-y-3">
-              {selected.map((traversal) => (
-                <div key={traversal.id}>
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                    <Badge tone={CONSTRAINT_TONE[traversal.constraint_type]}>
-                      {CONSTRAINT_LABEL[traversal.constraint_type]}
-                    </Badge>
-                  </div>
-                  <p className="mb-1.5 text-2xs leading-relaxed text-ink-600">
-                    {traversal.reason}
-                  </p>
-                  <TraversalPath traversal={traversal} />
-                </div>
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {Array.from(
+                new Set(selected.map((t) => t.constraint_type)),
+              ).map((constraint) => (
+                <Badge key={constraint} tone={CONSTRAINT_TONE[constraint]}>
+                  {CONSTRAINT_LABEL[constraint]}
+                </Badge>
               ))}
             </div>
+
+            <ul className="mb-3 space-y-1">
+              {Array.from(new Set(selected.map((t) => t.reason))).map((reason) => (
+                <li key={reason} className="text-2xs leading-relaxed text-ink-600">
+                  {reason}
+                </li>
+              ))}
+            </ul>
+
+            <DecisionPaths traversals={selected} />
 
             <p className="mt-3 border-t border-ink-200 pt-2.5 text-[10.5px] text-ink-500">
               Source: deterministic knowledge-graph traversal. These paths were
@@ -461,9 +471,11 @@ function ReplayTab({
 function SummaryTab({
   reasoning,
   trajectory,
+  timings,
 }: {
   reasoning: NonNullable<GenerateWorkoutResponse['graph_reasoning']>;
   trajectory: MemberTrajectory | null;
+  timings?: Record<string, number>;
 }) {
   const { summary } = reasoning;
 
@@ -481,6 +493,8 @@ function SummaryTab({
   return (
     <div className="space-y-4 px-5 py-4">
       <LlmBoundary summary={summary} />
+
+      <PipelineFlow summary={summary} trajectory={trajectory} timings={timings} />
 
       {/* Rendered only when the backend actually ran a longitudinal analysis. */}
       {trajectory ? <LongitudinalContext trajectory={trajectory} /> : null}

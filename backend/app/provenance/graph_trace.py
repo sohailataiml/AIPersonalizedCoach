@@ -154,11 +154,33 @@ def _traversal_from_path(
         reason=reason.message,
         rule_id=reason.rule_id,
         source=source,  # type: ignore[arg-type]
+        path_kind=_path_kind(nodes, edges),
         nodes=nodes,
         edges=edges,
         facts=list(path.facts),
         source_concept=_source_concept(path),
     )
+
+
+#: Node kinds that only ever appear on a walk through the member's own graph.
+MEMBER_NODE_KINDS = {"Member", "Injury", "Preference"}
+
+
+def _path_kind(nodes: list[GraphTraceNode], edges: list[GraphTraceEdge]) -> str:
+    """Classify a path from the node kinds the engine recorded.
+
+    Done here rather than in the UI so the member/exercise split is backed by
+    real typed data. A frontend deciding this from edge names or reason text
+    would be inventing structure inside the one panel whose purpose is to show
+    only what the graph holds.
+    """
+    if not edges:
+        return "set_operation"
+    if any(node.type in MEMBER_NODE_KINDS for node in nodes):
+        return "member_context"
+    if nodes and all(node.type == "AnatomicalRegion" for node in nodes):
+        return "anatomy_hierarchy"
+    return "exercise_structure"
 
 
 def _source_concept(path: GraphPath) -> str | None:

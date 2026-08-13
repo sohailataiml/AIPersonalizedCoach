@@ -458,3 +458,89 @@ class TestValidatorStillGuards:
 
         assert banned_id not in {e.exercise_id for e in workout.all_exercises()}
         assert report.passed is False
+
+
+class TestPathClassification:
+    """The member/exercise split must come from typed backend data.
+
+    The UI renders two labelled paths - the member's clinical context and the
+    exercise's structure. Deciding which is which from edge names or reason text
+    in the frontend would be exactly the invented structure this module exists
+    to prevent, so the classification is asserted here at the source.
+    """
+
+    def test_the_member_path_is_the_one_that_walks_the_member_graph(
+        self, reasoning, repository
+    ):
+        trace, _ = reasoning(INJURY_PROMPT)
+        jump = by_name(repository, "Static Jump")
+        member_paths = [
+            t
+            for t in trace.for_exercise(jump)
+            if t.path_kind == "member_context"
+        ]
+
+        assert member_paths
+        for path in member_paths:
+            assert path.nodes[0].type == "Member"
+            assert {n.type for n in path.nodes} & {"Injury", "InjuryCondition"}
+
+    def test_the_exercise_path_never_contains_the_member(self, reasoning, repository):
+        trace, _ = reasoning(INJURY_PROMPT)
+        jump = by_name(repository, "Static Jump")
+        exercise_paths = [
+            t for t in trace.for_exercise(jump) if t.path_kind == "exercise_structure"
+        ]
+
+        assert exercise_paths
+        for path in exercise_paths:
+            assert not {n.type for n in path.nodes} & {"Member", "Injury", "Preference"}
+            assert any(n.type == "Exercise" for n in path.nodes)
+
+    def test_evidence_with_no_edges_is_labelled_a_set_operation(self, reasoning):
+        trace, _ = reasoning(INJURY_PROMPT)
+        set_ops = [t for t in trace.traversals if t.path_kind == "set_operation"]
+
+        assert set_ops
+        for path in set_ops:
+            assert path.edges == []
+            assert path.facts, "a set operation must still state its evidence"
+
+    def test_the_part_of_closure_gets_its_own_label(self, reasoning, repository):
+        """The hop the design rests on is not lumped in with exercise structure."""
+        trace, _ = reasoning(INJURY_PROMPT)
+        anatomy = [
+            t
+            for t in trace.for_exercise(by_name(repository, "Static Jump"))
+            if t.path_kind == "anatomy_hierarchy"
+        ]
+
+        assert anatomy
+        for path in anatomy:
+            assert {n.type for n in path.nodes} == {"AnatomicalRegion"}
+            assert {e.relationship for e in path.edges} == {"PART_OF"}
+
+    def test_every_traversal_is_classified(self, reasoning):
+        trace, _ = reasoning(INJURY_PROMPT)
+        allowed = {
+            "member_context",
+            "anatomy_hierarchy",
+            "exercise_structure",
+            "set_operation",
+        }
+        assert {t.path_kind for t in trace.traversals} <= allowed
+        assert all(t.path_kind for t in trace.traversals)
+
+    def test_the_excluded_jump_carries_both_halves_of_the_argument(
+        self, reasoning, repository
+    ):
+        """The spec's worked example, asserted end to end."""
+        trace, _ = reasoning(INJURY_PROMPT)
+        traversals = trace.for_exercise(by_name(repository, "Static Jump"))
+        kinds = {t.path_kind for t in traversals}
+
+        assert {"member_context", "exercise_structure"} <= kinds
+        assert all(t.decision == "excluded" for t in traversals)
+        assert {"injury_contraindicated_pattern", "injury_region_stress"} <= {
+            t.rule_id for t in traversals
+        }
