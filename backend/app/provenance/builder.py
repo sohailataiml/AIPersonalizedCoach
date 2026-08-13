@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from app.domain.exercise import ExerciseCandidate
 from app.domain.resolution import ResolvedConcept
 from app.domain.safety import SafetyDecision
+from app.domain.trajectory import MemberTrajectory
 from app.domain.workout import GeneratedWorkout, PostValidationReport
 from app.safety.engine import SafetyContext
 
@@ -44,6 +45,12 @@ class ProvenanceItem(BaseModel):
     score_adjustment: float = 0.0
     in_plan: bool = False
     section: str | None = None
+    # Longitudinal personalization, kept separate from `score_adjustment` (which
+    # is the safety engine's). A trajectory signal that moved this exercise up
+    # or down the ranking must be visible as its own line, not blended into a
+    # total nobody can decompose.
+    longitudinal_adjustment: float = 0.0
+    longitudinal_reasons: list[str] = Field(default_factory=list)
 
 
 class ProvenanceBundle(BaseModel):
@@ -53,6 +60,8 @@ class ProvenanceBundle(BaseModel):
     unresolved_concepts: list[ResolvedConcept] = Field(default_factory=list)
     member_facts: list[str] = Field(default_factory=list)
     counts: dict[str, int] = Field(default_factory=dict)
+    # Optional and additive: absent when the caller ran no longitudinal analysis.
+    trajectory: MemberTrajectory | None = None
 
 
 def build_provenance(
@@ -61,8 +70,9 @@ def build_provenance(
     candidates: list[ExerciseCandidate],
     context: SafetyContext,
     report: PostValidationReport,
+    trajectory: MemberTrajectory | None = None,
 ) -> ProvenanceBundle:
-    bundle = ProvenanceBundle()
+    bundle = ProvenanceBundle(trajectory=trajectory)
     score_by_id = {c.exercise.id: c for c in candidates}
 
     section_by_id: dict[str, str] = {}
@@ -93,6 +103,12 @@ def build_provenance(
                 ),
                 score=candidate.score if candidate else None,
                 score_adjustment=decision.score_adjustment,
+                longitudinal_adjustment=(
+                    candidate.longitudinal_adjustment if candidate else 0.0
+                ),
+                longitudinal_reasons=(
+                    list(candidate.longitudinal_reasons) if candidate else []
+                ),
                 in_plan=True,
                 section=section_name,
             )
@@ -121,7 +137,7 @@ def build_provenance(
 
     bundle.resolved_concepts = [c for c in context.resolved_concepts if c.is_resolved]
     bundle.unresolved_concepts = [c for c in context.resolved_concepts if not c.is_resolved]
-    bundle.member_facts = _member_facts(context)
+    bundle.member_facts = _member_facts(context, trajectory)
     bundle.counts = {
         "catalog_total": len(decisions),
         "excluded": sum(1 for d in decisions.values() if d.status == "excluded"),
@@ -239,6 +255,11 @@ def _inclusion_reasons(
 
     if candidate is not None:
         reasons.extend(candidate.rank_reasons)
+        # Restate the longitudinal influence in plain terms next to the graph
+        # reasons. If a trajectory signal changed this exercise's position, the
+        # coach reads why here rather than inferring it from a score.
+        for reason in candidate.longitudinal_reasons:
+            reasons.append(f"Longitudinal personalization: {reason}.")
 
     # Anything the graph flagged still gets stated, so an included-but-cautioned
     # exercise never looks unconditionally safe.
@@ -246,7 +267,9 @@ def _inclusion_reasons(
     return reasons
 
 
-def _member_facts(context: SafetyContext) -> list[str]:
+def _member_facts(
+    context: SafetyContext, trajectory: MemberTrajectory | None = None
+) -> list[str]:
     member = context.member
     facts = [f"Member: {member.profile.name} ({member.profile.tier})."]
 
@@ -262,4 +285,6 @@ def _member_facts(context: SafetyContext) -> list[str]:
         facts.append(f"Primary goal: {top.text}.")
     if member.preferences.dislikes:
         facts.append(f"Dislikes (ranking only): {', '.join(member.preferences.dislikes)}.")
+    if trajectory is not None:
+        facts.extend(trajectory.summary_facts())
     return facts

@@ -725,6 +725,28 @@ const raw = {
         "section": "warmup"
       },
       {
+        "exercise_id": "03258dbf-bc21-4495-bcae-ca627b3a0f20",
+        "exercise": "Alternating Dumbbell Overhead Press",
+        "decision": "included",
+        "reasons": [
+          "Required equipment available: Dumbbell.",
+          "No graph-derived contraindication against Left Knee (recovering) (Patellofemoral Pain Syndrome).",
+          "outside the requested focus",
+          "Longitudinal personalization: familiar movement family (push) - trained recently while adherence is declining."
+        ],
+        "rule_ids": [],
+        "evidence": [],
+        "decision_source": "knowledge_graph",
+        "score": 26.0,
+        "score_adjustment": 0.0,
+        "in_plan": true,
+        "section": "main",
+        "longitudinal_adjustment": 6.0,
+        "longitudinal_reasons": [
+          "familiar movement family (push) - trained recently while adherence is declining"
+        ]
+      },
+      {
         "exercise_id": "0a4d99cf-5075-468e-9551-b9f8efa267f1",
         "exercise": "World's Greatest Stretch",
         "decision": "included",
@@ -2243,8 +2265,56 @@ const raw = {
         "Injury: Left Knee (recovering) - mild/recovering, mapped to Patellofemoral Pain Syndrome.",
         "Equipment for this session: Dumbbell, Flat Bench, Kettlebell, Yoga Mat.",
         "Primary goal: Build lower-body strength.",
-        "Dislikes (ranking only): Deadlift, Burpees."
+        "Dislikes (ranking only): Deadlift, Burpees.",
+        "Adherence declining over 4 weeks (100% to 50%, -50pp).",
+        "Sleep flat across 7 nights (avg 6.27h).",
+        "Training load low: 3 completed sessions, 2.62/week against a target of 4.",
+        "Progression: hold.",
+        "Injury trajectory: recovering (left knee, recorded status - not inferred)."
       ]
+    },
+    "trajectory": {
+      "member_id": "mbr_01HX9JORDAN",
+      "adherence": {
+        "direction": "declining",
+        "first": 100.0,
+        "latest": 50.0,
+        "delta": -50.0,
+        "observations": 4
+      },
+      "sleep": {
+        "direction": "flat",
+        "average_recent": 6.27,
+        "nights": 7
+      },
+      "training_load": {
+        "state": "low",
+        "completed_sessions": 3,
+        "sessions_per_week": 2.62,
+        "target_sessions_per_week": 4,
+        "ratio_to_target": 0.66,
+        "average_session_minutes": 28.3,
+        "average_rpe": 6.3
+      },
+      "progression": {
+        "state": "hold",
+        "rationale": [
+          "Adherence declining (100% to 50%).",
+          "Training load low: 2.62/week against a target of 4."
+        ]
+      },
+      "injury_trajectory": {
+        "state": "recovering",
+        "source": "recorded_status",
+        "injury_name": "left knee",
+        "recorded_status": "recovering",
+        "severity": "mild"
+      },
+      "bias": {
+        "volume_bias": "conservative",
+        "novelty_bias": "low",
+        "familiar_movement_families": ["hinge", "lunge", "pull", "push", "squat"]
+      }
     }
   },
   "copilot": {

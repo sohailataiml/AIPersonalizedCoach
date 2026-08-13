@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.graph_trace import GraphReasoning
 from app.domain.resolution import ResolvedConcept
+from app.domain.trajectory import MemberTrajectory
 
 # --- tool 1: get_member_context ---------------------------------------------
 
@@ -109,6 +110,11 @@ class MemberContextView(BaseModel):
     coach_brief: CoachBriefView
     churn: ChurnView
     sessions_recorded: int = 0
+    # The same deterministic longitudinal reading the workout pipeline uses.
+    # Present so an AI client cannot derive its own trend from the raw numbers
+    # and disagree with the plan it is discussing. Optional so an older client
+    # ignoring it keeps working.
+    trajectory: MemberTrajectory | None = None
     safety_note: str = Field(
         default=(
             "Injuries and equipment here are context for explanation only. "
@@ -276,6 +282,11 @@ class MetricTrendResult(BaseModel):
         default="deterministic_python",
         description="Arithmetic is computed in copilot.analytics, never by a model.",
     )
+    # The shared longitudinal reading, attached so a client discussing a trend
+    # sees the same derived state the workout pipeline personalized on. The
+    # numbers above and the states here come from one service; a client must
+    # never derive its own progression state from the observations.
+    trajectory: MemberTrajectory | None = None
 
 
 # --- tool 4: evaluate_exercise_safety ---------------------------------------

@@ -105,6 +105,7 @@ async def generate_workout(payload: GenerateWorkoutRequest) -> GenerateWorkoutRe
         generator=state.get("generator", "unknown"),
         graph_backend=services.backend,
         graph_reasoning=state.get("graph_reasoning"),
+        trajectory=state.get("trajectory"),
     )
 
 

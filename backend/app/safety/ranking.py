@@ -16,6 +16,7 @@ from app.domain.exercise import Exercise, ExerciseCandidate
 from app.domain.member import MemberContext
 from app.domain.resolution import ResolvedConcept
 from app.domain.safety import SafetyDecision
+from app.domain.trajectory import MemberTrajectory
 from app.domain.workout import WorkoutIntent
 from app.ontology.loader import Ontology
 from app.safety import policies
@@ -30,14 +31,25 @@ def rank_candidates(
     intent: WorkoutIntent,
     resolved: list[ResolvedConcept],
     ontology: Ontology,
+    trajectory: MemberTrajectory | None = None,
 ) -> list[ExerciseCandidate]:
-    """Score every non-excluded exercise. Excluded ones never appear."""
+    """Score every non-excluded exercise. Excluded ones never appear.
+
+    ``trajectory`` is optional and additive. When present it can only reorder
+    what safety already allowed: exclusions are applied before any longitudinal
+    arithmetic runs, and the adjustment itself is bounded below the smallest
+    safety penalty. A caller that omits it gets the pre-longitudinal ordering
+    unchanged.
+    """
     focus_muscles, focus_joints = _focus_targets(intent, resolved, ontology)
     recent = _recent_exercise_names(member)
+    familiar_families = set(trajectory.bias.familiar_movement_families) if trajectory else set()
 
     candidates: list[ExerciseCandidate] = []
     for exercise in exercises:
         decision = decisions.get(exercise.id)
+        # Hard safety first, and unconditionally: an excluded exercise never
+        # reaches the personalization arithmetic below.
         if decision is not None and decision.is_excluded:
             continue
 
@@ -66,16 +78,87 @@ def rank_candidates(
             score += goal_bonus
             reasons.append(goal_reason)
 
-        if exercise.name.lower() in recent:
+        # Rotation for variety is the default, but it is exactly the wrong
+        # instinct while adherence is falling: familiarity is what gets a
+        # wavering member to finish the session. The longitudinal layer owns
+        # this lever when it has a reading.
+        novelty_bias = trajectory.bias.novelty_bias if trajectory else "standard"
+        if exercise.name.lower() in recent and novelty_bias != "low":
             score += policies.PENALTY_RECENTLY_PERFORMED
             reasons.append("performed recently - rotate for variety")
 
+        # Kept out of `rank_reasons` deliberately: longitudinal influence is
+        # carried in its own field so provenance can show it as a distinct line
+        # and a caller can measure it independently of graph-derived ranking.
+        longitudinal, longitudinal_reasons = _longitudinal_adjustment(
+            exercise, ontology, trajectory, familiar_families
+        )
+        score += longitudinal
+
         candidates.append(
-            ExerciseCandidate(exercise=exercise, score=round(score, 2), rank_reasons=reasons)
+            ExerciseCandidate(
+                exercise=exercise,
+                score=round(score, 2),
+                rank_reasons=reasons,
+                longitudinal_adjustment=longitudinal,
+                longitudinal_reasons=longitudinal_reasons,
+            )
         )
 
     candidates.sort(key=lambda c: (-c.score, c.exercise.name))
     return candidates
+
+
+def _longitudinal_adjustment(
+    exercise: Exercise,
+    ontology: Ontology,
+    trajectory: MemberTrajectory | None,
+    familiar_families: set[str],
+) -> tuple[float, list[str]]:
+    """Familiarity weighting, bounded and explainable.
+
+    One lever, two directions:
+
+    * ``novelty_bias == "low"`` - the member is wavering, so movement families
+      they have actually completed recently get a small lift.
+    * ``novelty_bias == "high"`` - they are ahead of their own target, so
+      unfamiliar families get the lift instead.
+
+    Returns the adjustment and the reasons behind it, which provenance renders
+    verbatim. An empty reason list means longitudinal reasoning did not move
+    this exercise at all, which is itself worth being able to state.
+    """
+    if trajectory is None or not familiar_families:
+        return 0.0, []
+
+    families = _families_of(exercise, ontology)
+    if not families:
+        return 0.0, []
+
+    bias = trajectory.bias.novelty_bias
+    overlap = families & familiar_families
+
+    if bias == "low" and overlap:
+        return policies.BONUS_FAMILIAR_FAMILY, [
+            f"familiar movement family ({', '.join(sorted(overlap))}) - "
+            f"trained recently while adherence is {trajectory.adherence.direction}"
+        ]
+
+    if bias == "high" and not overlap:
+        return policies.BONUS_NOVEL_FAMILY, [
+            "new movement family - adherence and training load support new stimulus"
+        ]
+
+    return 0.0, []
+
+
+def _families_of(exercise: Exercise, ontology: Ontology) -> set[str]:
+    families = set()
+    for pattern in exercise.movement_patterns:
+        family = ontology.family_for_pattern(pattern)
+        if family:
+            families.add(family.id)
+    return families
 
 
 def _focus_targets(

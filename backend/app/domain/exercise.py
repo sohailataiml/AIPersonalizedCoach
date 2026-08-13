@@ -82,3 +82,8 @@ class ExerciseCandidate(BaseModel):
     exercise: Exercise
     score: float = 0.0
     rank_reasons: list[str] = Field(default_factory=list)
+    # Tracked separately from `score` so provenance can state exactly how much
+    # of the ordering came from longitudinal personalization - a signal that
+    # influences ranking must be visible, not folded into a single number.
+    longitudinal_adjustment: float = 0.0
+    longitudinal_reasons: list[str] = Field(default_factory=list)

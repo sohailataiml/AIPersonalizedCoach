@@ -14,6 +14,7 @@ from app.domain.graph_trace import GraphReasoning
 from app.domain.member import Goal, Injury, MemberSummary
 from app.domain.ontology import ConceptGrounding
 from app.domain.resolution import ResolvedConcept
+from app.domain.trajectory import MemberTrajectory
 from app.domain.workout import GeneratedWorkout, PostValidationReport
 from app.provenance.builder import ProvenanceItem
 
@@ -51,6 +52,9 @@ class GenerateWorkoutResponse(BaseModel):
     # Additive and optional: existing consumers that ignore this field keep
     # working, and a client can fall back to `provenance` if it is absent.
     graph_reasoning: GraphReasoning | None = None
+    # The deterministic longitudinal reading that personalized this plan.
+    # Personalization only - it never established safety.
+    trajectory: MemberTrajectory | None = None
 
 
 class CopilotRequest(BaseModel):

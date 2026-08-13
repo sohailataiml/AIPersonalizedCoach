@@ -75,6 +75,69 @@ export interface OntologyGroundingReport {
   counts: Record<string, number>;
 }
 
+/* ---- Longitudinal trajectory (optional; added additively) ---- */
+
+export type TrendDirection =
+  | 'improving'
+  | 'declining'
+  | 'flat'
+  | 'insufficient_data';
+
+export type ProgressionState =
+  | 'progress'
+  | 'hold'
+  | 'regress'
+  | 'insufficient_data';
+
+/**
+ * The deterministic longitudinal reading that personalized a plan.
+ *
+ * Personalization input, never clinical truth. `injury_trajectory.source` is
+ * `recorded_status` because that value is copied from the member's recorded
+ * injury — nothing here is inferred from adherence or sleep, and the UI must
+ * not present it as a clinical assessment.
+ */
+export interface MemberTrajectory {
+  member_id: string;
+  adherence: {
+    direction: TrendDirection;
+    first: number | null;
+    latest: number | null;
+    delta: number | null;
+    observations: number;
+  };
+  sleep: {
+    direction: TrendDirection;
+    average_recent: number | null;
+    nights: number;
+  };
+  training_load: {
+    state: 'low' | 'moderate' | 'high' | 'insufficient_data';
+    completed_sessions: number;
+    sessions_per_week: number | null;
+    target_sessions_per_week: number | null;
+    ratio_to_target: number | null;
+    average_session_minutes: number | null;
+    average_rpe: number | null;
+  };
+  progression: {
+    state: ProgressionState;
+    rationale: string[];
+  };
+  injury_trajectory: {
+    state: 'recovering' | 'worsening' | 'stable' | 'unknown';
+    source: 'recorded_status' | 'absent';
+    injury_name: string | null;
+    recorded_status: string | null;
+    severity: string | null;
+  };
+  bias: {
+    volume_bias: 'conservative' | 'standard' | 'ambitious';
+    novelty_bias: 'low' | 'standard' | 'high';
+    familiar_movement_families: string[];
+  };
+}
+
 /* ---- Graph reasoning (optional; added additively by the backend) ---- */
 
 export type GraphNodeKind =
@@ -187,6 +250,9 @@ export interface ProvenanceItem {
   score_adjustment: number;
   in_plan: boolean;
   section: string | null;
+  /** Longitudinal personalization, tracked apart from the safety adjustment. */
+  longitudinal_adjustment?: number;
+  longitudinal_reasons?: string[];
 }
 
 export interface WorkoutExercise {
@@ -261,6 +327,8 @@ export interface GenerateWorkoutResponse {
   graph_backend: string;
   /** Optional: absent responses fall back to the provenance-only UI. */
   graph_reasoning?: GraphReasoning | null;
+  /** Optional: the longitudinal reading that personalized this plan. */
+  trajectory?: MemberTrajectory | null;
 }
 
 export interface Goal {

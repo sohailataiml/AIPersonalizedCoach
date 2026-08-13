@@ -20,6 +20,7 @@ import re
 from app.domain.exercise import ExerciseCandidate
 from app.domain.member import MemberContext
 from app.domain.safety import SafetyDecision
+from app.domain.trajectory import MemberTrajectory
 from app.domain.workout import LLMWorkoutDraft, WorkoutIntent
 from app.llm.base import LLMClient, LLMError
 from app.safety.engine import SafetyContext
@@ -39,6 +40,10 @@ HARD RULES
 5. For each exercise give sets and reps, or a duration in seconds for timed work.
 6. If a candidate carries `needs_rom_caveat`, include a short coaching_note about
    keeping range of motion pain-free.
+7. If `member_trajectory.volume_bias` is "conservative", keep set counts and
+   total volume restrained and favour completion over intensity. This is a
+   composition preference derived from the member's recorded adherence and
+   session history - it never overrides the candidate list.
 
 The candidate list has already been filtered for safety by a clinical knowledge
 graph. You are composing and explaining, not judging safety."""
@@ -52,8 +57,11 @@ async def compose_workout_draft(
     candidates: list[ExerciseCandidate],
     safety_context: SafetyContext,
     decisions: dict[str, SafetyDecision],
+    trajectory: MemberTrajectory | None = None,
 ) -> LLMWorkoutDraft:
-    payload = _build_payload(member, intent, candidates, safety_context, decisions)
+    payload = _build_payload(
+        member, intent, candidates, safety_context, decisions, trajectory
+    )
     user = (
         "Compose the session described by this JSON brief. "
         "Return warmup, main and cooldown sections.\n\n"
@@ -82,10 +90,16 @@ def _build_payload(
     candidates: list[ExerciseCandidate],
     safety_context: SafetyContext,
     decisions: dict[str, SafetyDecision],
+    trajectory: MemberTrajectory | None = None,
 ) -> dict:
     top = candidates[:MAX_CANDIDATES]
 
     return {
+        **(
+            {"member_trajectory": _trajectory_payload(trajectory)}
+            if trajectory is not None
+            else {}
+        ),
         "member": {
             "name": member.profile.name,
             "goals": [g.text for g in sorted(member.goals, key=lambda g: g.priority)],
@@ -131,6 +145,26 @@ def _candidate_payload(
         "rank_score": candidate.score,
         "rank_reasons": candidate.rank_reasons,
         "needs_rom_caveat": needs_caveat,
+    }
+
+
+def _trajectory_payload(trajectory: MemberTrajectory) -> dict:
+    """Finished, deterministic conclusions - never the raw longitudinal data.
+
+    The model receives the *states* the service already computed. It is not
+    given the weekly percentages or nightly sleep hours, so it cannot recompute
+    a trend, disagree with the charts, or narrate a number nobody verified.
+    """
+    return {
+        "progression_state": trajectory.progression.state,
+        "volume_bias": trajectory.bias.volume_bias,
+        "adherence_direction": trajectory.adherence.direction,
+        "training_load": trajectory.training_load.state,
+        "note": (
+            "Deterministic personalization context, computed in Python. Use it "
+            "for volume and tone only. It never changes which exercises are "
+            "available - the candidate list remains the sole authority."
+        ),
     }
 
 

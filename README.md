@@ -33,6 +33,7 @@ The two knowledge graphs:
 - [Ontology decisions](#ontology-decisions)
 - [Concept resolution](#concept-resolution)
 - [Deterministic safety engine](#deterministic-safety-engine)
+- [Longitudinal reasoning](#longitudinal-reasoning)
 - [Agentic workflow](#agentic-workflow)
 - [Post-generation safety gate](#post-generation-safety-gate)
 - [Provenance](#provenance)
@@ -145,6 +146,7 @@ flowchart LR
     API[FastAPI]
     ORCH[LangGraph workflow]
     RES[Concept resolver<br/>exact → fuzzy → embedding]
+    LONG[Longitudinal trajectory<br/>deterministic, ranking only]
     SAFE[Deterministic safety engine]
     RANK[Ranking]
     LLM[LLM provider<br/>Anthropic / OpenAI / stub]
@@ -156,23 +158,31 @@ flowchart LR
 
     Coach --> UI --> API --> ORCH
     ORCH --> RES --> KG1
+    ORCH --> LONG --> KG2
     ORCH --> SAFE
     SAFE --> KG1
     SAFE --> KG2
     SAFE --> RANK --> LLM --> GATE
+    LONG -.->|ranking + volume only| RANK
     GATE -.->|re-checks against| SAFE
     GATE --> PROV --> UI
     API --> COP --> KG2
     COP --> LLM
 ```
 
-The load-bearing detail is the dotted line: the gate re-checks the model's output
-against the *same* decisions that produced the candidate list.
+Two load-bearing details, both dotted. The gate re-checks the model's output
+against the *same* decisions that produced the candidate list. And the
+longitudinal trajectory reaches **ranking only** — it never touches the safety
+engine, so history can reorder a plan but never make an unsafe exercise
+eligible.
 
 ```
 backend/app/
-├── domain/        typed contracts (exercise, member, workout, safety, resolution)
-├── ontology/      curated anatomy + SKOS mappings (mappings.yaml, loader.py)
+├── domain/        typed contracts (exercise, member, workout, safety, resolution,
+│                  ontology, trajectory)
+├── ontology/      curated anatomy + SKOS mappings (mappings.yaml, loader.py,
+│                  grounding.py)
+├── member/        trajectory.py - the one longitudinal reasoning service
 ├── graph/         model.py, repository.py (Protocol), memory_repository.py,
 │                  neo4j_repository.py, queries.py (Cypher)
 ├── ingestion/     exercises.py (KG1), member.py (KG2)
@@ -473,13 +483,138 @@ bilateral variant does not.
 
 ---
 
+## Longitudinal reasoning
+
+The PRD asks for *"progression and adherence over time"*. The member's history
+was already charted by the copilot; what was missing is history **influencing
+the plan**. One deterministic service does that:
+[`backend/app/member/trajectory.py`](backend/app/member/trajectory.py).
+
+It computes nothing that
+[`analytics.py`](backend/app/copilot/analytics.py) already computes — adherence,
+sleep and session arithmetic are delegated. Its job is to turn those numbers
+into a small typed trajectory plus exactly two personalization levers.
+
+### What is derived, and from what
+
+| Signal | Value for Jordan | Source |
+|---|---|---|
+| `adherence.direction` | **declining**, 100% → 50%, −50pp over 4 weeks | 4 `AdherenceObservation` nodes |
+| `sleep.direction` | **flat**, avg 6.27h over 7 nights | 7 sleep readings |
+| `training_load.state` | **low** — 2.62 sessions/week against her own target of 4 | `WorkoutSession` dates + `training_days_per_week` |
+| `progression.state` | **hold** | ordered rules over the three above |
+| `injury_trajectory.state` | **recovering** | **copied from the recorded injury status** |
+
+Two of these are worth defending.
+
+**Sleep reads `flat`, not `declining`.** The narrative wants a struggling member
+to be sleeping worse. The numbers say otherwise: 6.1, 5.4, 7.2, 6.0, 5.1, 7.8,
+6.3 — the second half averages *higher* than the first. The service reports what
+the arithmetic supports. It also records no "adequate / inadequate" judgement,
+because the data carries no target and inventing a threshold would turn
+arithmetic into an unsupported health claim.
+
+**`injury_trajectory` is never computed.** It is read verbatim from
+`injuries[].status`, and `source: "recorded_status"` says so in the payload.
+Deriving a clinical trajectory from behaviour is the most tempting and least
+defensible inference available here — falling adherence and short sessions are
+equally consistent with a busy fortnight. A test asserts that driving adherence
+to 10% leaves the injury trajectory untouched.
+
+Every signal has an explicit `insufficient_data` state and returns it rather
+than guessing from one observation.
+
+### How it influences the plan
+
+Progression state collapses into two levers — `volume_bias` and `novelty_bias` —
+and they are the only things ranking and composition may read:
+
+- **Ranking.** With `novelty_bias: low`, movement families the member has
+  *actually completed recently* get **+6**. Familiarity is protective when
+  someone is wavering; the default rotate-for-variety penalty is suspended.
+- **Composition.** The LLM receives `volume_bias: conservative` — and only the
+  finished states, never the weekly percentages or nightly hours, so it cannot
+  recompute a trend or narrate a number nobody verified.
+
+Familiar families are resolved through the ontology, not by name. **None of the
+9 history exercise names matches a catalog exercise**, so a name-based
+familiarity check would silently find nothing. Instead each name is matched
+against movement-family aliases, longest first — the same mechanism that makes
+"exclude deadlifts" reach the hinge family:
+
+```
+"KB Romanian Deadlift"        → hinge
+"Goblet Squat (box-supported)" → squat
+"Step-Up"                      → lunge
+"DB Floor Press"               → push
+"Band Pull-Apart"              → pull
+"Hip Thrust", "Wall Sit", "Banded Lateral Walk" → unresolved, contribute nothing
+```
+
+### Why it cannot argue with safety
+
+The priority order is enforced structurally, not by convention:
+
+```
+hard safety > equipment > explicit exclusions > longitudinal > preferences
+```
+
+1. **Exclusions are applied first.** An excluded exercise never reaches the
+   personalization arithmetic — `rank_candidates` skips it before any
+   trajectory code runs.
+2. **The adjustment is bounded below the smallest safety penalty.**
+   `MAX_LONGITUDINAL_ADJUSTMENT` (6.0) < `SMALLEST_SAFETY_PENALTY` (8.0), so no
+   combination of signals can lift a safety-flagged exercise past an unflagged
+   one. Both are asserted in
+   [`test_trajectory.py`](backend/tests/test_trajectory.py).
+3. **The safety engine never receives it.** A test inspects
+   `SafetyEngine.build_context/evaluate/evaluate_all` and asserts no
+   `trajectory` parameter exists.
+
+The sharpest case: `hinge` is Jordan's most familiar family, and *"exclude
+deadlifts"* removes it. The exclusion wins — a test asserts no excluded id
+survives ranking.
+
+### Provenance
+
+A longitudinal signal that moves ranking is stated, never folded into a score.
+`ProvenanceItem` carries `longitudinal_adjustment` and `longitudinal_reasons`
+separately from the safety engine's `score_adjustment`:
+
+```
+Alternating Dumbbell Overhead Press                              INCLUDED
+  Required equipment available: Dumbbell.
+  No graph-derived contraindication against Left Knee (recovering).
+  Longitudinal personalization: familiar movement family (push) —
+    trained recently while adherence is declining.        (+6.0)
+```
+
+### One service, three surfaces
+
+The workout pipeline, the Copilot and the MCP tools read the **same instance**,
+built once in the composition root. A trend cannot differ depending on which
+surface asked:
+
+| Surface | Where it appears |
+|---|---|
+| Workout generation | `analyze_longitudinal_context` node → ranking + composition + provenance |
+| REST | `trajectory` on `POST /api/workouts/generate` |
+| Copilot | `evidence.longitudinal` on adherence / sleep / what-changed |
+| MCP | `trajectory` on `get_member_context` and `get_member_metric_trend` |
+
+Trend arithmetic is not duplicated anywhere: everything routes to
+`copilot.analytics`.
+
+---
+
 ## Agentic workflow
 
 LangGraph, in
 [`backend/app/agents/workout_graph.py`](backend/app/agents/workout_graph.py):
 
 ```
-load_member → parse_intent(+resolve) → evaluate_safety → rank_candidates
+load_member → parse_intent(+resolve) → analyze_longitudinal_context
+            → evaluate_safety → rank_candidates
             → compose_workout (LLM) → validate_workout → build_provenance
 ```
 
@@ -746,7 +881,7 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**271 backend tests and 92 frontend tests, all passing**, deliberately
+**315 backend tests and 104 frontend tests, all passing**, deliberately
 concentrated on the paths where a bug produces a *confidently wrong* answer
 rather than a visible failure.
 
@@ -760,9 +895,13 @@ backend/tests/test_graph_trace.py      trace fidelity - no invented relationship
 backend/tests/test_ontology.py    37   ontology grounding: local ids stay
                                        authoritative, safety is unchanged, no
                                        fabricated identifiers
+backend/tests/test_trajectory.py  44   longitudinal reasoning: safety stays
+                                       authoritative, nothing medical is
+                                       inferred, insufficient data is an answer
 backend/tests/test_copilot*.py         grounding, missing data, chart correctness
 backend/tests/test_mcp_tools.py        MCP parity with a direct engine call
-frontend/tests/                   92   graph reasoning, replay, ontology grounding
+frontend/tests/                  104   graph reasoning, replay, ontology
+                                       grounding, longitudinal context
 ```
 
 Run them with `make test` (backend) and `npm test` in `frontend/`.
@@ -906,6 +1045,16 @@ This is an assessment prototype, not a production system. Specifically:
   either could be verified, and none was invented. Equipment, movement patterns
   and 7 of 19 muscle groups therefore stay local-only by design; the
   `unmapped` register in `mappings.yaml` records each decision and its reason.
+- **Longitudinal logic is deterministic and intentionally conservative.** Five
+  signals over one synthetic member with 4 adherence weeks, 7 sleep nights and
+  4 sessions. Thresholds (70% / 115% of the member's own weekly target) are
+  reasoned defaults, not calibrated against a population. `regress` is defined
+  and tested but never fires on this data, because nothing in it records a
+  worsening injury.
+- **No medical state is inferred.** Injury trajectory is copied from the
+  recorded status. Sleep carries no adequacy judgement, RPE is reported but not
+  interpreted as fatigue, and no biomarker (resting HR, HRV) is read as a
+  recovery signal — none of them come with a baseline that would justify it.
 - **Verification is a point-in-time claim.** The codes were resolved against
   SNOMED CT US edition `2025_09_01`. A later release can retire or restructure
   a concept, which is exactly why the audit is a script rather than a sentence.

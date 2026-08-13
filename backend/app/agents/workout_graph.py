@@ -1,8 +1,8 @@
 """The workout generation workflow, orchestrated with LangGraph.
 
-    load_member -> parse_intent -> resolve_concepts -> evaluate_safety
-                -> rank_candidates -> compose_workout -> validate_workout
-                -> build_provenance
+    load_member -> parse_intent -> resolve_concepts -> analyze_longitudinal_context
+                -> evaluate_safety -> rank_candidates -> compose_workout
+                -> validate_workout -> build_provenance
 
 Only ``compose_workout`` touches the LLM. The rest are ordinary deterministic
 functions, and they are modelled as explicit nodes rather than hidden inside one
@@ -12,6 +12,14 @@ where it does not. No node is dressed up as an "agent" for its own sake.
 Note that ``resolve_concepts`` shares a node with ``parse_intent``: intent
 parsing already routes every span through the resolver, so a separate node would
 be theatre. The state still exposes ``resolved_concepts`` as its own field.
+
+``analyze_longitudinal_context`` sits *before* ``evaluate_safety`` in the graph
+because it describes the member, not the request - but the ordering is
+presentational, not a dependency. The safety engine never receives the
+trajectory. Only ``rank_candidates`` and ``compose_workout`` read it, which is
+what keeps the priority order honest:
+
+    hard safety > equipment > explicit exclusions > longitudinal > preferences
 """
 
 from __future__ import annotations
@@ -30,6 +38,7 @@ from app.domain.graph_trace import GraphReasoning
 from app.domain.member import MemberContext
 from app.domain.resolution import ResolvedConcept
 from app.domain.safety import SafetyDecision
+from app.domain.trajectory import MemberTrajectory
 from app.domain.workout import (
     GeneratedWorkout,
     LLMWorkoutDraft,
@@ -39,6 +48,7 @@ from app.domain.workout import (
 )
 from app.graph.repository import GraphRepository
 from app.llm.base import LLMClient
+from app.member.trajectory import MemberTrajectoryService
 from app.ontology.loader import Ontology
 from app.provenance.builder import ProvenanceBundle, build_provenance
 from app.provenance.graph_trace import build_graph_reasoning
@@ -54,6 +64,7 @@ class WorkoutState(TypedDict, total=False):
     member_context: MemberContext
     intent: WorkoutIntent
     resolved_concepts: list[ResolvedConcept]
+    trajectory: MemberTrajectory
     safety_context: SafetyContext
     safety_decisions: dict[str, SafetyDecision]
     eligible_exercises: list[ExerciseCandidate]
@@ -75,18 +86,25 @@ class WorkoutWorkflow:
         resolver,
         engine: SafetyEngine,
         llm: LLMClient,
+        trajectory_service: MemberTrajectoryService | None = None,
     ) -> None:
         self._repo = repository
         self._ontology = ontology
         self._resolver = resolver
         self._engine = engine
         self._llm = llm
+        # One shared longitudinal service. The composition root passes the same
+        # instance to the Copilot and the MCP tools, so a trend can never differ
+        # depending on which surface asked. The default keeps direct
+        # construction (tests, scripts) working.
+        self._trajectory_service = trajectory_service or MemberTrajectoryService(ontology)
         self._graph = self._build()
 
     def _build(self):
         builder = StateGraph(WorkoutState)
         builder.add_node("load_member", self._load_member)
         builder.add_node("parse_intent", self._parse_intent)
+        builder.add_node("analyze_longitudinal_context", self._analyze_longitudinal_context)
         builder.add_node("evaluate_safety", self._evaluate_safety)
         builder.add_node("rank_candidates", self._rank_candidates)
         builder.add_node("compose_workout", self._compose_workout)
@@ -95,7 +113,8 @@ class WorkoutWorkflow:
 
         builder.set_entry_point("load_member")
         builder.add_edge("load_member", "parse_intent")
-        builder.add_edge("parse_intent", "evaluate_safety")
+        builder.add_edge("parse_intent", "analyze_longitudinal_context")
+        builder.add_edge("analyze_longitudinal_context", "evaluate_safety")
         builder.add_edge("evaluate_safety", "rank_candidates")
         builder.add_edge("rank_candidates", "compose_workout")
         builder.add_edge("compose_workout", "validate_workout")
@@ -132,6 +151,15 @@ class WorkoutWorkflow:
             "timings": _timed(state, "parse_intent_and_resolve", started),
         }
 
+    def _analyze_longitudinal_context(self, state: WorkoutState) -> dict[str, Any]:
+        """Deterministic trajectory analysis. No LLM, no safety authority."""
+        started = time.perf_counter()
+        trajectory = self._trajectory_service.analyze(state["member_context"])
+        return {
+            "trajectory": trajectory,
+            "timings": _timed(state, "analyze_longitudinal_context", started),
+        }
+
     def _evaluate_safety(self, state: WorkoutState) -> dict[str, Any]:
         started = time.perf_counter()
         context = self._engine.build_context(
@@ -153,6 +181,7 @@ class WorkoutWorkflow:
             state["intent"],
             state["resolved_concepts"],
             self._ontology,
+            trajectory=state.get("trajectory"),
         )
         return {
             "eligible_exercises": candidates,
@@ -168,6 +197,7 @@ class WorkoutWorkflow:
             candidates=state["eligible_exercises"],
             safety_context=state["safety_context"],
             decisions=state["safety_decisions"],
+            trajectory=state.get("trajectory"),
         )
         return {
             "draft": draft,
@@ -204,6 +234,7 @@ class WorkoutWorkflow:
             state["eligible_exercises"],
             state["safety_context"],
             state["post_validation"],
+            trajectory=state.get("trajectory"),
         )
 
         # Built from the SAME decision objects the provenance bundle uses, so

@@ -17,6 +17,7 @@ from app.graph.memory_repository import InMemoryGraphRepository
 from app.graph.repository import GraphRepository
 from app.llm.base import LLMClient
 from app.llm.factory import build_llm_client
+from app.member.trajectory import MemberTrajectoryService
 from app.ontology.loader import Ontology, get_ontology
 from app.resolution.resolver import ConceptResolver
 from app.safety.engine import SafetyEngine
@@ -35,6 +36,8 @@ class Services:
     workflow: WorkoutWorkflow
     copilot: CopilotService
     backend: str
+    # Optional so a hand-built container (tests) stays valid without it.
+    trajectory: MemberTrajectoryService | None = None
 
     def close(self) -> None:
         closer = getattr(self.repository, "close", None)
@@ -57,6 +60,10 @@ def build_services(settings: Settings | None = None) -> Services:
     )
     engine = SafetyEngine(repository, ontology)
     llm = build_llm_client(settings)
+    # One longitudinal service for the whole process. The workout pipeline, the
+    # Copilot and the MCP tools all read this instance, which is what makes
+    # "the same trend everywhere" structural rather than a convention.
+    trajectory_service = MemberTrajectoryService(ontology)
 
     services = Services(
         settings=settings,
@@ -65,8 +72,11 @@ def build_services(settings: Settings | None = None) -> Services:
         resolver=resolver,
         engine=engine,
         llm=llm,
-        workflow=WorkoutWorkflow(repository, ontology, resolver, engine, llm),
-        copilot=CopilotService(llm),
+        trajectory=trajectory_service,
+        workflow=WorkoutWorkflow(
+            repository, ontology, resolver, engine, llm, trajectory_service
+        ),
+        copilot=CopilotService(llm, trajectory_service=trajectory_service),
         backend=backend,
     )
 
@@ -82,6 +92,7 @@ def build_services(settings: Settings | None = None) -> Services:
         llm,
         gateway=McpGateway(copilot_server),
         catalog={e.name: e.id for e in repository.list_exercises()},
+        trajectory_service=trajectory_service,
     )
     return services
 

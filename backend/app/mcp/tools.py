@@ -56,6 +56,7 @@ from app.mcp.schemas import (
     TrendView,
     WorkoutRequestEvaluation,
 )
+from app.member.trajectory import MemberTrajectoryService
 from app.provenance.builder import build_pre_generation_provenance
 from app.provenance.graph_trace import build_graph_reasoning
 from app.safety.ranking import rank_candidates
@@ -95,6 +96,17 @@ def _require_member(services: Services, member_id: str):
     if member is None:
         raise MemberNotFoundError(f"Unknown member: {member_id}")
     return member
+
+
+def _trajectory_service(services: Services) -> MemberTrajectoryService:
+    """The container's shared service, or an equivalent built from its ontology.
+
+    The fallback exists so a hand-assembled ``Services`` (tests, scripts) still
+    works. It reads the same ontology and the same analytics, so the result is
+    identical either way - this is a construction convenience, not a second
+    implementation.
+    """
+    return services.trajectory or MemberTrajectoryService(services.ontology)
 
 
 # --- tool 1 ------------------------------------------------------------------
@@ -142,6 +154,7 @@ def get_member_context(services: Services, member_id: str) -> MemberContextView:
         equipment_available=list(member.equipment_available),
         adherence=_trend(analytics.adherence_trend(member)),
         sleep=_trend(analytics.sleep_trend(member)),
+        trajectory=_trajectory_service(services).analyze(member),
         biomarkers=BiomarkerView(
             resting_hr_bpm=member.biomarkers.resting_hr_bpm,
             hrv_ms=member.biomarkers.hrv_ms,
@@ -312,6 +325,7 @@ def get_member_metric_trend(
             latest_value=values[-1] if values else None,
             direction="insufficient_data",
             unit=unit,
+            trajectory=_trajectory_service(services).analyze(member),
         )
 
     first, latest = values[0], values[-1]
@@ -342,6 +356,7 @@ def get_member_metric_trend(
         ),
         direction=direction,
         unit=unit,
+        trajectory=_trajectory_service(services).analyze(member),
     )
 
 

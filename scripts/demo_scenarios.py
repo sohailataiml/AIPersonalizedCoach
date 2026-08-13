@@ -64,6 +64,41 @@ SCENARIOS = [
 ]
 
 
+def _report_longitudinal_context(services) -> list[str]:
+    """Print the deterministic trajectory, and assert what the data supports.
+
+    Printed once rather than per scenario because it describes the *member*,
+    not the request. The assertions here are as much about restraint as
+    accuracy: sleep must read flat (the nights do not trend down) and the
+    injury trajectory must be the recorded status, never something derived
+    from falling adherence.
+    """
+    member = services.repository.get_member_context(MEMBER_ID)
+    trajectory = services.trajectory.analyze(member)
+    problems: list[str] = []
+
+    print("=" * 78)
+    print("Longitudinal context (deterministic, personalization only)")
+    for fact in trajectory.summary_facts():
+        print(f"  {fact}")
+    print(
+        f"  bias: volume={trajectory.bias.volume_bias} "
+        f"novelty={trajectory.bias.novelty_bias} "
+        f"familiar={', '.join(trajectory.bias.familiar_movement_families)}"
+    )
+    print()
+
+    if trajectory.adherence.direction != "declining":
+        problems.append("longitudinal: adherence should read declining")
+    if trajectory.sleep.direction != "flat":
+        problems.append("longitudinal: sleep should read flat - the nights do not trend down")
+    if trajectory.progression.state != "hold":
+        problems.append("longitudinal: progression should be hold")
+    if trajectory.injury_trajectory.source != "recorded_status":
+        problems.append("longitudinal: injury trajectory must come from the recorded status")
+    return problems
+
+
 async def run() -> int:
     settings = get_settings()
     services = build_services(settings)
@@ -71,6 +106,8 @@ async def run() -> int:
 
     print(f"graph backend : {services.backend}")
     print(f"llm provider  : {getattr(services.llm, 'name', 'unknown')}\n")
+
+    failures.extend(_report_longitudinal_context(services))
 
     for scenario in SCENARIOS:
         print("=" * 78)

@@ -39,6 +39,7 @@ from app.copilot.tool_router import (
 )
 from app.domain.member import MemberContext
 from app.llm.base import LLMClient, LLMError
+from app.member.trajectory import MemberTrajectoryService
 
 logger = logging.getLogger(__name__)
 
@@ -190,10 +191,16 @@ class CopilotService:
         llm: LLMClient,
         gateway: McpGateway | None = None,
         catalog: dict[str, str] | None = None,
+        trajectory_service: MemberTrajectoryService | None = None,
     ) -> None:
         self._llm = llm
         self._gateway = gateway
         self._catalog = catalog or {}
+        # The same longitudinal service the workout pipeline uses. Optional so a
+        # bare CopilotService still works; when present, trend questions are
+        # answered from the identical deterministic reading rather than a second
+        # interpretation of the same numbers.
+        self._trajectory = trajectory_service
 
     # --- MCP-first entry point -------------------------------------------
 
@@ -357,6 +364,27 @@ class CopilotService:
             return self._labs(member, name)
         return self._general(member, name)
 
+    def _longitudinal_evidence(self, member) -> dict | None:
+        """The shared trajectory reading, as compact evidence.
+
+        Returns the same states the workout pipeline personalized on, so a
+        coach asking "how's adherence?" and a coach reading a plan's rationale
+        see one answer. Numbers are not repeated here - the surrounding
+        evidence already carries them; this adds only the derived states.
+        """
+        if self._trajectory is None:
+            return None
+        trajectory = self._trajectory.analyze(member)
+        return {
+            "adherence_direction": trajectory.adherence.direction,
+            "sleep_direction": trajectory.sleep.direction,
+            "training_load": trajectory.training_load.state,
+            "progression_state": trajectory.progression.state,
+            "progression_rationale": trajectory.progression.rationale,
+            "injury_trajectory": trajectory.injury_trajectory.state,
+            "injury_trajectory_source": trajectory.injury_trajectory.source,
+        }
+
     def _adherence(self, member, name):
         trend = analytics.adherence_trend(member)
         if not trend.has_data:
@@ -372,6 +400,7 @@ class CopilotService:
             "direction": trend.direction,
             "average_pct": trend.average,
             "recorded_trend_label": member.adherence.trend,
+            "longitudinal": self._longitudinal_evidence(member),
             "summary": (
                 f"{name}'s weekly completion went from {trend.first}% to {trend.latest}% "
                 f"across {len(trend.values)} weeks ({trend.direction}, "
@@ -409,6 +438,7 @@ class CopilotService:
             "direction": trend.direction,
             "nights_below_7": sum(1 for v in trend.values if v < 7),
             "related_goal": goal.text if goal else None,
+            "longitudinal": self._longitudinal_evidence(member),
             "summary": (
                 f"{name} averaged {trend.average}h over the last {len(trend.values)} nights "
                 f"(range {min(trend.values)}-{max(trend.values)}h); "
@@ -500,6 +530,7 @@ class CopilotService:
             "changes": change.changes,
             "adherence_delta_pct": change.adherence_delta,
             "weeks_compared": change.weeks_compared,
+            "longitudinal": self._longitudinal_evidence(member),
             "summary": " ".join(change.changes),
         }
         citations = [

@@ -23,6 +23,23 @@ BONUS_FOCUS_MATCH = 25.0
 BONUS_EQUIPMENT_PREFERRED = 5.0
 PENALTY_RECENTLY_PERFORMED = -6.0
 
+# --- longitudinal personalization -------------------------------------------
+# Applied from the member's trajectory (adherence, training load, progression).
+# These are *preferences*, one rung below equipment and explicit exclusions in
+# the priority order, and they are bounded so they cannot argue with safety:
+#
+#     hard safety > equipment > explicit exclusions > longitudinal > preferences
+#
+# The bound is the load-bearing part. Every longitudinal adjustment is capped
+# strictly below the smallest safety penalty, so no combination of trajectory
+# signals can lift a safety-flagged exercise past an unflagged one. It is
+# asserted in tests rather than left as an intention.
+BONUS_FAMILIAR_FAMILY = 6.0
+BONUS_NOVEL_FAMILY = 4.0
+
+SMALLEST_SAFETY_PENALTY = abs(PENALTY_UNLOADED_INJURY_REGION)
+MAX_LONGITUDINAL_ADJUSTMENT = max(BONUS_FAMILIAR_FAMILY, BONUS_NOVEL_FAMILY)
+
 # When the coach names a focus ("lower-body"), everything outside that focus is
 # off-brief. Without this the arithmetic misfires in exactly the case that
 # matters most: an injury penalty of -35..-55 on every lower-body option would

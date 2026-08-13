@@ -11,8 +11,13 @@ import {
   cx,
 } from '@/components/ui/primitives';
 import { CONCEPT_METHOD_STYLE, conceptLabel } from '@/lib/presentation';
-import type { GenerateWorkoutResponse, GraphTraversal } from '@/lib/types';
+import type {
+  GenerateWorkoutResponse,
+  GraphTraversal,
+  MemberTrajectory,
+} from '@/lib/types';
 import { LlmBoundary } from './LlmBoundary';
+import { LongitudinalContext } from './LongitudinalContext';
 import { GroundingDetail } from './OntologyGrounding';
 import { CONSTRAINT_LABEL, CONSTRAINT_TONE, TraversalPath } from './TraversalPath';
 import { TraversalReplay } from './TraversalReplay';
@@ -192,7 +197,9 @@ export function GraphReasoningPanel({
             onSelect={onSelect}
           />
         ) : null}
-        {tab === 'summary' ? <SummaryTab reasoning={reasoning} /> : null}
+        {tab === 'summary' ? (
+          <SummaryTab reasoning={reasoning} trajectory={result.trajectory ?? null} />
+        ) : null}
       </div>
     </Card>
   );
@@ -453,8 +460,10 @@ function ReplayTab({
 
 function SummaryTab({
   reasoning,
+  trajectory,
 }: {
   reasoning: NonNullable<GenerateWorkoutResponse['graph_reasoning']>;
+  trajectory: MemberTrajectory | null;
 }) {
   const { summary } = reasoning;
 
@@ -472,6 +481,9 @@ function SummaryTab({
   return (
     <div className="space-y-4 px-5 py-4">
       <LlmBoundary summary={summary} />
+
+      {/* Rendered only when the backend actually ran a longitudinal analysis. */}
+      {trajectory ? <LongitudinalContext trajectory={trajectory} /> : null}
 
       <div>
         <div className="label-caps mb-2">Prompt to plan</div>
