@@ -5,6 +5,12 @@ import type {
   EvaluationRun,
   ExerciseProvenance,
   GenerateWorkoutResponse,
+  GraphLegendResponse,
+  GraphNodeView,
+  GraphSafetyResponse,
+  GraphSearchResponse,
+  GraphStatsResponse,
+  GraphSubgraph,
   HealthResponse,
   MemberHistory,
   MemberSummary,
@@ -96,6 +102,44 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /* --- Knowledge Graph Explorer (read-only) ---
+   *
+   * Every call names a node and a depth. There is deliberately no method that
+   * sends a query language: the backend owns the shape of every traversal, and
+   * no Bolt URI or credential exists on this side of the boundary.
+   */
+
+  graphSearch: (query: string, kinds?: string[], limit = 10) => {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    if (kinds?.length) params.set('kinds', kinds.join(','));
+    return request<GraphSearchResponse>(`/graph/search?${params}`);
+  },
+
+  graphNode: (nodeId: string) =>
+    request<GraphNodeView>(`/graph/nodes/${encodeURIComponent(nodeId)}`),
+
+  graphNeighborhood: (
+    nodeId: string,
+    options: { depth?: number; relationships?: string[]; kinds?: string[] } = {},
+  ) => {
+    const params = new URLSearchParams({ depth: String(options.depth ?? 1) });
+    if (options.relationships?.length)
+      params.set('relationships', options.relationships.join(','));
+    if (options.kinds?.length) params.set('kinds', options.kinds.join(','));
+    return request<GraphSubgraph>(
+      `/graph/nodes/${encodeURIComponent(nodeId)}/neighborhood?${params}`,
+    );
+  },
+
+  graphSummary: () => request<GraphStatsResponse>('/graph/summary'),
+
+  graphLegend: () => request<GraphLegendResponse>('/graph/legend'),
+
+  graphSafety: (exerciseId: string) =>
+    request<GraphSafetyResponse>(
+      `/graph/safety/${encodeURIComponent(exerciseId)}`,
+    ),
 
   /* --- System quality (read-only developer surface) --- */
 

@@ -383,6 +383,99 @@ export interface AdjustWorkoutResponse extends GenerateWorkoutResponse {
   diff: AdjustmentDiff;
 }
 
+/* ---- Knowledge Graph Explorer (read-only) ---- */
+
+/**
+ * A node as the explorer API serves it.
+ *
+ * `id` is the graph's own key (`AnatomicalRegion:knee`). Properties are
+ * allowlisted server-side — the frontend receives only what the API chose to
+ * expose, and never a raw Neo4j object.
+ */
+export interface GraphNodeView {
+  id: string;
+  label: string;
+  kind: string;
+  properties: Record<string, string | number | boolean>;
+  ontology_grounding: ConceptGrounding | null;
+  degree: number;
+}
+
+export interface GraphEdgeView {
+  id: string;
+  source: string;
+  target: string;
+  relationship: string;
+  direction: 'outgoing' | 'incoming';
+  properties: Record<string, string>;
+}
+
+export interface GraphSubgraph {
+  root_id: string;
+  nodes: GraphNodeView[];
+  edges: GraphEdgeView[];
+  depth: number;
+  truncated: boolean;
+  omitted_count: number;
+}
+
+export interface GraphSearchHit {
+  id: string;
+  label: string;
+  kind: string;
+  canonical_id: string | null;
+  match: 'label' | 'alias' | 'id' | 'substring';
+  score: number;
+  degree: number;
+}
+
+export interface GraphSearchResponse {
+  query: string;
+  hits: GraphSearchHit[];
+  count: number;
+  truncated: boolean;
+}
+
+export interface GraphStatsResponse {
+  graph_backend: string;
+  node_count: number;
+  edge_count: number;
+  nodes_by_kind: Record<string, number>;
+  edges_by_relationship: Record<string, number>;
+  ontology_mappings: number;
+}
+
+export interface RelationshipGlossaryEntry {
+  relationship: string;
+  description: string;
+  count: number;
+}
+
+export interface GraphLegendResponse {
+  node_kinds: string[];
+  relationships: RelationshipGlossaryEntry[];
+}
+
+/**
+ * A safety decision for one exercise, carrying the *same* traversals the coach
+ * UI renders. The explorer computes no safety of its own.
+ */
+export interface GraphSafetyResponse {
+  member_id: string;
+  member_name: string;
+  exercise_id: string;
+  exercise_name: string;
+  prompt: string;
+  decision: string;
+  rule_ids: string[];
+  reasons: string[];
+  traversals: GraphTraversal[];
+  score_adjustment: number;
+  longitudinal_adjustment: number;
+  longitudinal_reasons: string[];
+  eligible: boolean;
+}
+
 /* ---- System quality: offline evaluation ---- */
 
 export type EvaluationCategory =

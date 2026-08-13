@@ -19,8 +19,15 @@ from typing import Any
 from neo4j import Driver, GraphDatabase
 
 from app.domain.exercise import Exercise
+from app.domain.graph_explorer import (
+    GraphEdgeView,
+    GraphNodeView,
+    GraphSearchResponse,
+    GraphSubgraph,
+)
 from app.domain.member import MemberContext
 from app.domain.safety import GraphPath
+from app.graph import explorer
 from app.graph import model as m
 from app.graph import queries as q
 from app.graph.model import KnowledgeGraph
@@ -37,7 +44,146 @@ logger = logging.getLogger(__name__)
 BATCH = 500
 
 
-class Neo4jGraphRepository:
+class _Neo4jExplorerMixin:
+    """Read-only explorer backed by real Cypher.
+
+    Split of responsibility, matching the precedent set by ``list_exercises``:
+
+    * **Neo4j decides the topology.** Which nodes match a search and which
+      edges exist around a node come from the store, so the viewer shows what
+      was actually seeded. A drift between the store and the projection would
+      surface as a parity failure rather than hide.
+    * **The projection supplies the typed view.** Property allowlisting and
+      ontology grounding are the same code the in-memory backend runs, so the
+      two backends cannot describe the same node differently.
+
+    Every statement is a parameterised constant from ``queries.py``. No client
+    input is ever interpolated into Cypher, and nothing here writes.
+    """
+
+    def search_nodes(
+        self, query: str, kinds: list[str] | None = None, limit: int = 10
+    ) -> GraphSearchResponse:
+        needle = (query or "").strip().lower()
+        if not needle:
+            return GraphSearchResponse(query=query, hits=[], count=0)
+
+        try:
+            rows = self._read(
+                q.EXPLORER_SEARCH, needle=needle, limit=explorer.MAX_SEARCH_LIMIT
+            )
+        except Exception as exc:  # pragma: no cover - transport failure
+            logger.warning("explorer search failed, using projection: %s", exc)
+            return self._explorer.search(query, kinds=kinds, limit=limit)
+
+        # Rank and shape with the shared implementation, restricted to what the
+        # store actually returned.
+        matched = {row["key"] for row in rows if row.get("key")}
+        ranked = self._explorer.search(query, kinds=kinds, limit=explorer.MAX_SEARCH_LIMIT)
+        hits = [hit for hit in ranked.hits if hit.id in matched][
+            : max(1, min(limit, explorer.MAX_SEARCH_LIMIT))
+        ]
+        return GraphSearchResponse(
+            query=query,
+            hits=hits,
+            count=len(hits),
+            truncated=len(matched) > len(hits),
+        )
+
+    def get_node(self, node_id: str) -> GraphNodeView | None:
+        key = self._explorer.resolve_id(node_id)
+        if key is None:
+            return None
+        rows = self._read(q.EXPLORER_NODE, key=key)
+        if not rows:
+            return None
+        return self._explorer.node_view(key)
+
+    def get_neighborhood(
+        self,
+        node_id: str,
+        depth: int = 1,
+        relationship_types: list[str] | None = None,
+        node_kinds: list[str] | None = None,
+    ) -> GraphSubgraph:
+        key = self._explorer.resolve_id(node_id)
+        if key is None:
+            return GraphSubgraph(root_id=node_id, depth=depth)
+
+        clamped = max(1, min(depth, explorer.MAX_DEPTH))
+        rel_filter = set(relationship_types) if relationship_types else None
+        kind_filter = set(node_kinds) if node_kinds else None
+
+        root = self._explorer.node_view(key)
+        if root is None:  # pragma: no cover - resolve_id guarantees presence
+            return GraphSubgraph(root_id=node_id, depth=clamped)
+
+        nodes: dict[str, GraphNodeView] = {key: root}
+        edges: dict[str, GraphEdgeView] = {}
+        omitted = 0
+        frontier = [key]
+
+        for _ in range(clamped):
+            if not frontier:
+                break
+            rows = self._read(q.EXPLORER_NEIGHBOURS, keys=frontier)
+            next_frontier: list[str] = []
+
+            for row in rows:
+                source, target = row.get("source"), row.get("target")
+                relationship = row.get("relationship")
+                if not (source and target and relationship):
+                    continue
+                if rel_filter is not None and relationship not in rel_filter:
+                    continue
+
+                anchor = source if source in frontier else target
+                other = target if anchor == source else source
+                direction = "outgoing" if anchor == source else "incoming"
+
+                candidate = self._explorer.node_view(other)
+                if candidate is None:
+                    continue
+                if kind_filter is not None and candidate.kind not in kind_filter:
+                    continue
+
+                if other not in nodes:
+                    if len(nodes) >= explorer.MAX_NODES:
+                        omitted += 1
+                        continue
+                    nodes[other] = candidate
+                    next_frontier.append(other)
+
+                edge_id = f"{source}|{relationship}|{target}"
+                if edge_id not in edges:
+                    edges[edge_id] = GraphEdgeView(
+                        id=edge_id,
+                        source=source,
+                        target=target,
+                        relationship=relationship,
+                        direction=direction,  # type: ignore[arg-type]
+                    )
+            frontier = next_frontier
+
+        return GraphSubgraph(
+            root_id=key,
+            nodes=list(nodes.values()),
+            edges=list(edges.values()),
+            depth=clamped,
+            truncated=omitted > 0,
+            omitted_count=omitted,
+        )
+
+    @property
+    def _explorer(self) -> explorer.GraphExplorer:
+        cached = getattr(self, "_explorer_cache", None)
+        if cached is None:
+            cached = explorer.GraphExplorer(self._projection, self._ontology)
+            self._explorer_cache = cached
+        return cached
+
+
+class Neo4jGraphRepository(_Neo4jExplorerMixin):
     def __init__(
         self,
         driver: Driver,

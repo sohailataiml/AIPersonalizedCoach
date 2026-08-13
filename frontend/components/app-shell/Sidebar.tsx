@@ -16,6 +16,7 @@ type NavId =
   | 'overview'
   | 'workouts'
   | 'copilot'
+  | 'graph'
   | 'system'
   | 'members'
   | 'insights'
@@ -73,6 +74,15 @@ const NAV: NavItem[] = [
     available: true,
     target: 'copilot',
     icon: <Icon path="M12 3a9 9 0 0 0-9 9v5a2 2 0 0 0 2 2h2v-6H5v-1a7 7 0 0 1 14 0v1h-2v6h2a2 2 0 0 0 2-2v-5a9 9 0 0 0-9-9Z" />,
+  },
+  {
+    // Read-only inspection of the application's own graph. Not a database
+    // console - see components/graph-explorer.
+    id: 'graph',
+    label: 'Graph',
+    available: true,
+    href: '/graph',
+    icon: <Icon path="M12 3.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM5 16.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM19 16.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM11 7.4 6 15m7-7.6 5 7.6M7 18.5h10" />,
   },
   {
     // A developer/operator surface, deliberately outside the coach's daily

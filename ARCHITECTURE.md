@@ -1219,3 +1219,53 @@ Case detail reuses `DecisionPaths`, the same component the coach graph panel
 uses. There is deliberately no second provenance renderer: two renderers of the
 same evidence eventually disagree, and the one in the engineering dashboard is
 the one nobody would notice drifting.
+
+
+---
+
+## 13. Knowledge Graph Explorer
+
+A read-only application feature for inspecting the graph the app reasons on.
+Explicitly **not** Neo4j Browser: no Cypher box, no Bolt URI, no credential, no
+write path.
+
+```text
+React (/graph)
+   -> FastAPI  /api/graph/*            (GET only)
+   -> GraphRepository.search_nodes / get_node / get_neighborhood
+   -> Neo4j (topology via Cypher) | in-memory projection
+```
+
+### 13.1 Boundary
+
+The three repository methods are the whole surface. The client names a node and
+a depth; it cannot express a traversal the API did not design. There is no
+method that accepts a query language and none that writes.
+
+### 13.2 What is exposed
+
+* `EXPLORABLE_KINDS` gates traversal. Member health nodes (LabResult,
+  DEXAResult, BiomarkerObservation, ChatMessage, CoachBrief, ChurnSignal,
+  AdherenceObservation, WorkoutSession) are unreachable - absent from search,
+  from neighborhoods and from the legend. `HAS_INJURY` / `HAS_EQUIPMENT` still
+  show how member context joins the clinical graph.
+* `PROPERTY_ALLOWLIST` gates properties per node kind. An ingestion field added
+  later is invisible until deliberately listed.
+* Limits: search <= 50, depth <= 2, nodes <= 150, with `truncated` and
+  `omitted_count` reported rather than silently applied.
+
+### 13.3 Backend split
+
+Neo4j decides the **topology** (which nodes match, which edges exist) via
+parameterised read-only Cypher constants; the validated projection supplies the
+**typed view** (allowlisted properties, ontology grounding). This is the same
+division `list_exercises` has always used, and it means a drift between what
+was seeded and what the application reasons on surfaces as a parity failure.
+
+### 13.4 Reuse, not duplication
+
+* Safety mode calls the existing `SafetyEngine` and projects through the
+  existing `build_graph_reasoning`, then renders with `DecisionPaths`.
+* Ontology mode renders the Phase 1 mapping set through `GroundingDetail`.
+
+No provenance logic, safety logic or grounding data is re-implemented here.

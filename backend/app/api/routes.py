@@ -9,6 +9,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from app.agents.adjustment import adjust_workout
+from app.agents.intent import parse_intent
 from app.api.deps import get_services
 from app.api.schemas import (
     AdjustWorkoutRequest,
@@ -18,6 +19,7 @@ from app.api.schemas import (
     ExerciseProvenanceResponse,
     GenerateWorkoutRequest,
     GenerateWorkoutResponse,
+    GraphSafetyResponse,
     HealthResponse,
     MemberHistoryResponse,
     MemberSummaryResponse,
@@ -25,10 +27,21 @@ from app.api.schemas import (
 )
 from app.copilot import analytics
 from app.domain.evaluation import EvaluationHistory, EvaluationRun
+from app.domain.graph_explorer import (
+    EXPLORABLE_KINDS,
+    RELATIONSHIP_GLOSSARY,
+    GraphLegendResponse,
+    GraphNodeView,
+    GraphSearchResponse,
+    GraphStatsResponse,
+    GraphSubgraph,
+    RelationshipGlossaryEntry,
+)
 from app.domain.ontology import ConceptGrounding, OntologyGroundingReport
 from app.domain.trace import AdjustmentTraceSummary, RequestTrace, TraceListResponse
 from app.domain.workout import WorkoutRequest
 from app.evaluation.artifacts import EvaluationArtifactStore
+from app.member.trajectory import MemberTrajectoryService
 from app.observability.collector import (
     build_copilot_trace,
     build_workflow_trace,
@@ -36,6 +49,8 @@ from app.observability.collector import (
 )
 from app.ontology.grounding import build_grounding_report, to_concept_grounding
 from app.ontology.loader import get_ontology
+from app.provenance.graph_trace import build_graph_reasoning
+from app.safety.ranking import rank_candidates
 from app.safety.validator import UnsafePlanError
 
 logger = logging.getLogger(__name__)
@@ -409,6 +424,186 @@ def exercise_provenance(exercise_id: str) -> ExerciseProvenanceResponse:
 @router.get("/graph/stats")
 def graph_stats() -> dict[str, int]:
     return get_services().repository.stats()
+
+
+# --- knowledge graph explorer (read-only) ------------------------------------
+#
+# An application feature, not a database console. There is deliberately no
+# endpoint here that accepts a query language: the client names a node and a
+# depth, and the API owns the shape of every traversal. Nothing here writes,
+# and no Bolt URI, credential or raw driver object crosses the boundary.
+
+
+@router.get("/graph/search", response_model=GraphSearchResponse)
+def graph_search(q: str, kinds: str | None = None, limit: int = 10) -> GraphSearchResponse:
+    """Ranked node matches by label, id or alias.
+
+    Distinct from concept *resolution*: the resolver must pick one canonical
+    concept and refuse when unsure, because a wrong pick applies a wrong safety
+    rule. Search has no such consequence, so it returns candidates and lets a
+    human choose - and never auto-selects a weak match.
+    """
+    selected = [k for k in (kinds or "").split(",") if k] or None
+    return get_services().repository.search_nodes(q, kinds=selected, limit=limit)
+
+
+@router.get("/graph/nodes/{node_id}", response_model=GraphNodeView)
+def graph_node(node_id: str) -> GraphNodeView:
+    node = get_services().repository.get_node(node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail=f"Unknown graph node {node_id}")
+    return node
+
+
+@router.get("/graph/nodes/{node_id}/neighborhood", response_model=GraphSubgraph)
+def graph_neighborhood(
+    node_id: str,
+    depth: int = 1,
+    relationships: str | None = None,
+    kinds: str | None = None,
+) -> GraphSubgraph:
+    """Bounded expansion from one node. Depth and node count are clamped."""
+    services = get_services()
+    if services.repository.get_node(node_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown graph node {node_id}")
+
+    return services.repository.get_neighborhood(
+        node_id,
+        depth=depth,
+        relationship_types=[r for r in (relationships or "").split(",") if r] or None,
+        node_kinds=[k for k in (kinds or "").split(",") if k] or None,
+    )
+
+
+@router.get("/graph/summary", response_model=GraphStatsResponse)
+def graph_summary() -> GraphStatsResponse:
+    """Counts computed from the seeded graph, never from the brief."""
+    services = get_services()
+    graph = services.repository.graph()
+
+    # Counted over what the explorer can actually reach, so the summary
+    # describes the browsable graph rather than advertising nodes the API
+    # deliberately refuses to serve.
+    explorable = {
+        key for key, node in graph.nodes.items() if node.label in EXPLORABLE_KINDS
+    }
+
+    nodes_by_kind: dict[str, int] = {}
+    for key in explorable:
+        label = graph.nodes[key].label
+        nodes_by_kind[label] = nodes_by_kind.get(label, 0) + 1
+
+    edges_by_relationship: dict[str, int] = {}
+    for edge in graph.edges:
+        if edge.source in explorable and edge.target in explorable:
+            edges_by_relationship[edge.type] = edges_by_relationship.get(edge.type, 0) + 1
+
+    return GraphStatsResponse(
+        graph_backend=services.backend,
+        node_count=len(explorable),
+        edge_count=sum(edges_by_relationship.values()),
+        nodes_by_kind=dict(sorted(nodes_by_kind.items())),
+        edges_by_relationship=dict(sorted(edges_by_relationship.items())),
+        ontology_mappings=nodes_by_kind.get("OntologyConcept", 0),
+    )
+
+
+@router.get("/graph/legend", response_model=GraphLegendResponse)
+def graph_legend() -> GraphLegendResponse:
+    """Relationship semantics, with how often each actually occurs."""
+    graph = get_services().repository.graph()
+    explorable = {
+        key for key, node in graph.nodes.items() if node.label in EXPLORABLE_KINDS
+    }
+    counts: dict[str, int] = {}
+    for edge in graph.edges:
+        if edge.source in explorable and edge.target in explorable:
+            counts[edge.type] = counts.get(edge.type, 0) + 1
+
+    return GraphLegendResponse(
+        node_kinds=sorted(
+            {graph.nodes[key].label for key in explorable}
+        ),
+        relationships=[
+            RelationshipGlossaryEntry(
+                relationship=relationship,
+                description=RELATIONSHIP_GLOSSARY.get(
+                    relationship, "Relationship present in the graph."
+                ),
+                count=count,
+            )
+            for relationship, count in sorted(counts.items())
+        ],
+    )
+
+
+@router.get("/graph/safety/{exercise_id}", response_model=GraphSafetyResponse)
+def graph_safety(
+    exercise_id: str,
+    member_id: str = "mbr_01HX9JORDAN",
+    prompt: str = "Create a 45-minute lower-body workout. Her left knee is bothering her.",
+) -> GraphSafetyResponse:
+    """One exercise's safety decision, computed by the existing engine.
+
+    The explorer derives no safety of its own. It calls the same
+    ``SafetyEngine`` the workout pipeline calls and projects the result through
+    the same ``build_graph_reasoning``, so the paths rendered here are the
+    paths that produced the decision.
+    """
+    services = get_services()
+    member = services.repository.get_member_context(member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail=f"Unknown member {member_id}")
+
+    node = services.repository.get_node(exercise_id)
+    resolved_id = node.properties.get("id") if node else exercise_id
+    exercise = services.repository.get_exercise(str(resolved_id))
+    if exercise is None:
+        raise HTTPException(status_code=404, detail=f"Unknown exercise {exercise_id}")
+
+    intent, resolved = parse_intent(prompt, 45, services.resolver)
+    context = services.engine.build_context(member, intent, resolved)
+    decision = services.engine.evaluate(exercise, context)
+
+    trajectory_service = services.trajectory or MemberTrajectoryService(services.ontology)
+    trajectory = trajectory_service.analyze(member)
+    candidates = rank_candidates(
+        services.repository.list_exercises(),
+        {decision.exercise_id: decision},
+        member,
+        intent,
+        resolved,
+        services.ontology,
+        trajectory=trajectory,
+    )
+    candidate = next((c for c in candidates if c.exercise.id == exercise.id), None)
+
+    reasoning = build_graph_reasoning(
+        trace_id=uuid.uuid4().hex[:12],
+        graph_backend=services.backend,
+        decisions={decision.exercise_id: decision},
+        candidates=[],
+        resolved_concepts=resolved,
+        member_facts=[],
+        in_plan_count=0,
+        ontology=services.ontology,
+    )
+
+    return GraphSafetyResponse(
+        member_id=member.profile.id,
+        member_name=member.profile.name,
+        exercise_id=exercise.id,
+        exercise_name=exercise.name,
+        prompt=prompt,
+        decision=decision.status,
+        rule_ids=[r.rule_id for r in decision.reasons],
+        reasons=decision.reason_messages(),
+        traversals=reasoning.traversals,
+        score_adjustment=decision.score_adjustment,
+        longitudinal_adjustment=candidate.longitudinal_adjustment if candidate else 0.0,
+        longitudinal_reasons=list(candidate.longitudinal_reasons) if candidate else [],
+        eligible=not decision.is_excluded,
+    )
 
 
 # --- system quality (developer / operator surface) ---------------------------

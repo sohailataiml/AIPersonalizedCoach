@@ -43,6 +43,7 @@ The two knowledge graphs:
 - [Demo scenarios](#demo-scenarios)
 - [Tests](#tests)
 - [Technology choices](#technology-choices)
+- [Knowledge graph explorer](#knowledge-graph-explorer)
 - [Evaluation and observability](#evaluation-and-observability)
 - [Evaluating this in production](#evaluating-this-in-production)
 - [Trade-offs and deliberate decisions](#trade-offs-and-deliberate-decisions)
@@ -971,7 +972,7 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**390 backend tests and 156 frontend tests, all passing**, deliberately
+**457 backend tests and 182 frontend tests, all passing**, deliberately
 concentrated on the paths where a bug produces a *confidently wrong* answer
 rather than a visible failure.
 
@@ -995,7 +996,9 @@ backend/tests/test_mcp_tools.py        MCP parity with a direct engine call
 backend/tests/test_observability.py 41  evaluation harness + tracing:
                                        metric arithmetic, invariant derivation,
                                        trace privacy, observational tracing
-frontend/tests/                  156   graph reasoning, replay, ontology
+backend/tests/test_graph_explorer.py 67 explorer: read-only boundary, privacy
+                                       gate, property allowlist, Neo4j parity
+frontend/tests/                  182   graph reasoning, replay, ontology
                                        grounding, longitudinal context,
                                        path viewer, adjustment + diff,
                                        system quality dashboard
@@ -1050,6 +1053,89 @@ inferred: at that exact floor the MCP ASGI app mounts and a tool round-trip comp
 A clean `pip install -e "backend[dev]"` resolves to the newest compatible set
 (FastAPI 0.141, starlette 1.6, LangGraph 1.2, Neo4j driver 6.2). All 135 tests and all
 three demo scenarios pass on both that resolution and the 0.116.2 floor.
+
+---
+
+## Knowledge graph explorer
+
+`/graph`, reachable from the sidebar's **Graph** item. A read-only view of the
+graph the application actually reasons on - anatomy, exercises, muscles,
+movement patterns, equipment, conditions, member-context joins and ontology
+grounding.
+
+> **This is not Neo4j Browser.** There is no Cypher box, no Bolt URI, no
+> credential and no write path anywhere in the feature. The browser talks to
+> FastAPI, which talks to `GraphRepository`. The client names a *node* and a
+> *depth*; the API owns the shape of every traversal.
+
+```
+React  ->  FastAPI  ->  GraphRepository  ->  Neo4j / in-memory
+```
+
+### Three modes, one data model
+
+| Mode | Answers |
+|---|---|
+| **Explore** | *"What is in this graph, and how is this concept connected?"* - search, then walk a bounded neighborhood |
+| **Safety reasoning** | *"Why was this exercise excluded?"* - asks the real `SafetyEngine` and renders its paths |
+| **Ontology grounding** | *"How is this local concept grounded in SNOMED?"* - local concept -> SKOS mapping -> published concept |
+
+Safety mode reuses **`DecisionPaths`**, the same component the coach's graph
+panel uses, and Ontology mode reuses **`GroundingDetail`** from the Phase 1
+mapping set. There is deliberately no second provenance renderer and no second
+grounding view - two renderings of the same evidence eventually disagree.
+
+### Read-only API
+
+```text
+GET /api/graph/search?q=knee&kinds=Exercise&limit=10
+GET /api/graph/nodes/{node_id}
+GET /api/graph/nodes/{node_id}/neighborhood?depth=1&relationships=...&kinds=...
+GET /api/graph/summary
+GET /api/graph/legend
+GET /api/graph/safety/{exercise_id}
+```
+
+Node ids are the graph's own keys (`AnatomicalRegion:knee`), and resolver-style
+canonical ids (`anatomy:knee`) are accepted as aliases so deep links work.
+
+### What the explorer refuses to do
+
+- **No query language crosses the API.** Tests assert no route path contains
+  `cypher`/`query`/`console`, that every `/api/graph` route is `GET`-only, and
+  that no explorer Cypher constant contains `CREATE`, `MERGE`, `SET`, `DELETE`,
+  `DROP` or `CALL`.
+- **No raw driver objects serialize.** Responses are normalized models, and
+  node properties are **allowlisted per kind** - a new ingestion field cannot
+  silently become public.
+- **Member health data is unreachable, not merely unrendered.** `LabResult`,
+  `DEXAResult`, `BiomarkerObservation`, `ChatMessage`, `CoachBrief`,
+  `ChurnSignal`, `AdherenceObservation` and `WorkoutSession` are absent from
+  `EXPLORABLE_KINDS`, so they cannot be searched, addressed directly or reached
+  as a neighbour. `HAS_INJURY` and `HAS_EQUIPMENT` still show how member context
+  joins the clinical graph, which is the part worth explaining.
+- **Nothing is loaded automatically.** There is no whole-graph query. Expansion
+  starts at a named node, depth is clamped to 2, node count to 150, and
+  truncation is *reported* (`truncated`, `omitted_count`) rather than applied
+  silently.
+
+### Visualization
+
+A deterministic radial SVG layout in plain React - no new dependency, and
+deliberately not a force-directed graph. The question is "how is this concept
+connected?", and a stable ring answers it; a hairball that settles differently
+on every render does not. It also keeps the layout a pure function of the
+payload, so a test can assert what is drawn, and every node is a real focusable
+element with a text label and a type glyph - the graph is navigable by keyboard
+and readable without relying on colour.
+
+### Backend parity
+
+Neo4j serves the **topology** from real Cypher; the validated projection
+supplies the **typed view** - the same split `list_exercises` has always used.
+Eleven parity tests assert both backends return identical nodes, edges and
+relationships for search, node detail, one- and two-hop neighborhoods and SKOS
+mappings, and they run against a live container when one is reachable.
 
 ---
 

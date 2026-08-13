@@ -161,3 +161,43 @@ RETURN e.name AS exercise,
        collect(DISTINCT f.name) AS families,
        collect(DISTINCT mu.name) AS targets
 """
+
+# --- read-only explorer ------------------------------------------------------
+# The Knowledge Graph Explorer's topology comes from these queries, so the
+# viewer reflects what is actually stored rather than a client-side copy. Node
+# *properties* are still served from the validated projection, exactly as
+# LIST_EXERCISES is - Neo4j decides the shape, Pydantic supplies the contract.
+#
+# Every statement is parameterised and read-only. No statement here is ever
+# built from client input: the API chooses the query, the client chooses only a
+# node key and a depth.
+
+EXPLORER_SEARCH = """
+MATCH (n:GraphNode)
+WHERE toLower(n.name) CONTAINS $needle
+   OR toLower(coalesce(n.id, '')) = $needle
+   OR any(alias IN coalesce(n.aliases, []) WHERE toLower(alias) CONTAINS $needle)
+RETURN n.key AS key
+LIMIT $limit
+"""
+
+EXPLORER_NODE = """
+MATCH (n:GraphNode {key: $key})
+RETURN n.key AS key
+"""
+
+#: One hop. Depth 2 is reached by running this again from the frontier, which
+#: keeps the traversal bounded and readable rather than relying on a
+#: variable-length pattern that could fan out unpredictably.
+EXPLORER_NEIGHBOURS = """
+UNWIND $keys AS key
+MATCH (n:GraphNode {key: key})-[r]-(m:GraphNode)
+RETURN startNode(r).key AS source,
+       type(r) AS relationship,
+       endNode(r).key AS target
+"""
+
+EXPLORER_DEGREE = """
+MATCH (n:GraphNode {key: $key})-[r]-()
+RETURN count(r) AS degree
+"""

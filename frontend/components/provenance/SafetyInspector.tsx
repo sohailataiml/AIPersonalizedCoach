@@ -251,6 +251,18 @@ function ProvenancePanel({
         <StatusPill status={status} />
       </div>
 
+      {/* Additive deep link: the same decision, opened in the graph explorer
+          where the full neighborhood around it can be walked. */}
+      <a
+        href={`/graph?mode=safety&exercise=${encodeURIComponent(
+          item.exercise_id,
+        )}&name=${encodeURIComponent(item.exercise)}`}
+        className="mt-1 inline-flex items-center gap-1 text-[10px] text-graph-700 underline decoration-dotted underline-offset-2 hover:text-graph-900"
+      >
+        Open in graph explorer
+        <span aria-hidden>→</span>
+      </a>
+
       <div className="mt-3">
         <div className="label-caps mb-1">Reason</div>
         <ul className="space-y-1">

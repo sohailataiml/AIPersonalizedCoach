@@ -11,9 +11,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.domain.exercise import Exercise
+from app.domain.graph_explorer import (
+    GraphNodeView,
+    GraphSearchResponse,
+    GraphSubgraph,
+)
 from app.domain.member import MemberContext
 from app.domain.safety import GraphPath
 from app.graph import model as m
+from app.graph.explorer import GraphExplorer
 from app.graph.model import KnowledgeGraph
 from app.ingestion.exercises import ingest_exercise_graph, load_exercises
 from app.ingestion.member import (
@@ -39,6 +45,7 @@ class InMemoryGraphRepository:
         self._members = member_contexts
         self._ontology = ontology
         self._graph = graph
+        self._explorer_cache: GraphExplorer | None = None
 
     # --- construction ----------------------------------------------------
 
@@ -242,3 +249,40 @@ class InMemoryGraphRepository:
 
     def stats(self) -> dict[str, int]:
         return self._graph.stats()
+
+    # --- read-only exploration --------------------------------------------
+    #
+    # Served from the same projection every safety traversal walks, so the
+    # explorer shows the graph the application actually reasons on.
+
+    @property
+    def _explorer(self) -> GraphExplorer:
+        if self._explorer_cache is None:
+            self._explorer_cache = GraphExplorer(self._graph, self._ontology)
+        return self._explorer_cache
+
+    def search_nodes(
+        self, query: str, kinds: list[str] | None = None, limit: int = 10
+    ) -> GraphSearchResponse:
+        return self._explorer.search(query, kinds=kinds, limit=limit)
+
+    def get_node(self, node_id: str) -> GraphNodeView | None:
+        key = self._explorer.resolve_id(node_id)
+        return self._explorer.node_view(key) if key else None
+
+    def get_neighborhood(
+        self,
+        node_id: str,
+        depth: int = 1,
+        relationship_types: list[str] | None = None,
+        node_kinds: list[str] | None = None,
+    ) -> GraphSubgraph:
+        key = self._explorer.resolve_id(node_id)
+        if key is None:
+            return GraphSubgraph(root_id=node_id, depth=depth)
+        return self._explorer.neighborhood(
+            key,
+            depth=depth,
+            relationship_types=relationship_types,
+            node_kinds=node_kinds,
+        )

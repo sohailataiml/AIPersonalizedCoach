@@ -1464,3 +1464,29 @@ Scoped and deliberately skipped. See README *Known limitations* for the
 reasoning: the workflow completes in ~50 ms with the offline stub, so a
 progress stream would add transport and failure modes to narrate work that is
 already finished.
+
+
+---
+
+## Phase 5 - Knowledge Graph Explorer
+
+| Item | Location |
+|---|---|
+| Contracts + allowlists | `backend/app/domain/graph_explorer.py` |
+| Shared traversal | `backend/app/graph/explorer.py` |
+| Protocol additions | `backend/app/graph/repository.py` |
+| In-memory backend | `backend/app/graph/memory_repository.py` |
+| Neo4j backend (Cypher) | `backend/app/graph/neo4j_repository.py`, `queries.py` |
+| Endpoints | `backend/app/api/routes.py` (`/api/graph/*`, GET only) |
+| Route | `frontend/app/graph/page.tsx` |
+| Components | `frontend/components/graph-explorer/` |
+| Tests | `backend/tests/test_graph_explorer.py` (67), `frontend/tests/graph-explorer.test.tsx` (26) |
+
+Visualization is a deterministic radial SVG layout in plain React. React Flow
+was considered and declined: the layout is a pure function of the payload
+(testable in jsdom), adds no dependency, and a stable ring explains connectivity
+better than a force simulation that settles differently each render.
+
+Deep links: `/graph?node=anatomy:knee` and
+`/graph?mode=safety&exercise=<id>&name=<label>`, the latter linked from the
+Safety & Provenance Inspector.

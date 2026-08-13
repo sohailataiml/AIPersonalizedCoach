@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.copilot.mcp_narrator import SafetyEvidence
 from app.copilot.service import ChartPayload, Citation, CopilotIntent, Grounding
-from app.domain.graph_trace import GraphReasoning
+from app.domain.graph_trace import GraphReasoning, GraphTraversal
 from app.domain.member import Goal, Injury, MemberSummary
 from app.domain.ontology import ConceptGrounding
 from app.domain.resolution import ResolvedConcept
@@ -142,6 +142,33 @@ class ExerciseProvenanceResponse(BaseModel):
     # equipment carry no external identifier, and that is stated rather than
     # papered over.
     grounding: list[ConceptGrounding] = Field(default_factory=list)
+
+
+class GraphSafetyResponse(BaseModel):
+    """One exercise's safety decision, for the explorer's Safety Reasoning mode.
+
+    Deliberately thin: it carries the decision and the **same** ``GraphTraversal``
+    objects the coach UI renders, so the explorer reuses ``DecisionPaths`` and
+    contains no second interpretation of provenance. Safety is computed by the
+    existing engine - the explorer only asks.
+    """
+
+    member_id: str
+    member_name: str
+    exercise_id: str
+    exercise_name: str
+    prompt: str
+    decision: str
+    rule_ids: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    traversals: list[GraphTraversal] = Field(default_factory=list)
+    score_adjustment: float = 0.0
+    #: Longitudinal personalization is reported separately: it influences
+    #: ranking, never eligibility, and merging it into the safety decision
+    #: would blur exactly the boundary this project exists to keep sharp.
+    longitudinal_adjustment: float = 0.0
+    longitudinal_reasons: list[str] = Field(default_factory=list)
+    eligible: bool = True
 
 
 class HealthResponse(BaseModel):
