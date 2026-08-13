@@ -302,6 +302,41 @@ class TestRenderBlueprint:
         regions = {service["region"] for service in blueprint["services"]}
         assert len(regions) == 1
 
+    def test_nothing_free_is_addressed_over_the_private_network(self, blueprint):
+        """A free service can SEND private traffic but cannot RECEIVE it.
+
+        So any service named as the target of a `fromService` host/port/hostport
+        reference has to be on a paid plan, or the reference resolves to an
+        address that refuses the connection. Asserted rather than remembered:
+        an earlier draft of this Blueprint pointed the frontend at a `free`
+        backend over `hostport`, which would have failed only once deployed.
+        """
+        private_properties = {"host", "port", "hostport"}
+        referenced = {
+            entry["fromService"]["name"]
+            for service in blueprint["services"]
+            for entry in service.get("envVars", [])
+            if entry.get("fromService", {}).get("property") in private_properties
+        }
+        assert referenced, "expected at least one private-network reference"
+        for name in referenced:
+            assert self._service(blueprint, name)["plan"] != "free", (
+                f"{name} is addressed privately but cannot receive that traffic"
+            )
+
+    def test_public_origins_are_not_private_service_references(self, blueprint):
+        """CORS origins and the proxy target must be public URLs.
+
+        `fromService` exposes only private addresses, so referencing one here
+        would put an internal hostname in Access-Control-Allow-Origin (matching
+        nothing) or proxy over plain-HTTP private DNS.
+        """
+        backend = self._env(self._service(blueprint, "future-coach-backend"))
+        frontend = self._env(self._service(blueprint, "future-coach-frontend"))
+        for env, key in ((backend, "FRONTEND_ORIGIN"), (frontend, "BACKEND_ORIGIN")):
+            assert "fromService" not in env[key]
+            assert env[key]["value"].startswith("https://")
+
     def test_the_backend_runs_against_neo4j(self, blueprint):
         env = self._env(self._service(blueprint, "future-coach-backend"))
         assert env["GRAPH_BACKEND"]["value"] == "neo4j"

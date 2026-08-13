@@ -19,9 +19,17 @@
 #
 # ---------------------------------------------------------------------------
 # PAID RESOURCES (see README "Render deployment"):
-#   Render persistent disks require a paid instance type, and a free web
-#   service cannot RECEIVE private network traffic. The Neo4j private service
-#   therefore runs on `starter`. Frontend and backend stay on `free`.
+#   Render persistent disks require a paid instance type, and a free service
+#   cannot RECEIVE private network traffic (it may still SEND it). Neo4j needs
+#   both, so it runs on `starter`.
+#
+#   The backend runs on `starter` too, for a different reason: free services
+#   spin down when idle, and this one performs the graph bootstrap and only
+#   reports ready once Neo4j verifies. Paying for it buys a demo that answers
+#   the first request instead of cold-starting a database connection in front
+#   of an audience. Dropping it to `free` is safe - nothing reaches it over the
+#   private network - and saves the money at the cost of that first-request
+#   latency. The frontend stays `free`.
 #
 # ONE MANUAL SECRET (see README):
 #   NEO4J_AUTH      on future-coach-neo4j   = neo4j/<password>
@@ -75,9 +83,9 @@ services:
   - type: web
     name: future-coach-backend
     runtime: python
-    plan: free
+    plan: starter           # see PAID RESOURCES above
     region: oregon          # must match Neo4j: the private network is regional
-    branch: master
+    branch: main
     rootDir: .
     buildCommand: pip install -e backend
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend
@@ -120,11 +128,13 @@ services:
         value: stub
       # CORS: the deployed frontend origin is appended to the local
       # development origins. Never "*" - this API allows credentials.
+      #
+      # Written out rather than referenced: `fromService` only exposes PRIVATE
+      # network addresses (host / port / hostport), and a CORS origin must be
+      # the public one the browser actually sends. `property: host` would put
+      # the internal hostname in Access-Control-Allow-Origin and match nothing.
       - key: FRONTEND_ORIGIN
-        fromService:
-          type: web
-          name: future-coach-frontend
-          property: host
+        value: https://future-coach-frontend.onrender.com
       # The MCP transport validates the Host header (DNS-rebinding
       # protection). It stays ON; the deployed hostname is allow-listed
       # instead of the protection being disabled.
@@ -139,7 +149,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    branch: master
+    branch: main
     rootDir: frontend
     buildCommand: npm ci && npm run build
     startCommand: npm run start
@@ -152,8 +162,13 @@ services:
       # into the client bundle.
       - key: NEXT_PUBLIC_API_BASE
         value: /api
+      #
+      # The public backend URL, not a `fromService` reference. Two reasons:
+      # `fromService` yields only private addresses, and Render's private
+      # network is plain HTTP on a bare host:port - so the value would have to
+      # be http://, while this proxy hop should stay TLS. The backend is a
+      # public service by design anyway (the MCP endpoint is meant to be
+      # curl-able), so this adds no exposure. The browser still only ever talks
+      # to the frontend origin.
       - key: BACKEND_ORIGIN
-        fromService:
-          type: web
-          name: future-coach-backend
-          property: hostport
+        value: https://future-coach-backend.onrender.com

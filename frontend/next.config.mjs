@@ -11,8 +11,9 @@
  * origin only and Next proxies through - which also removes CORS from the
  * picture entirely.
  */
-// Render's `fromService: property: hostport` yields "host:port" with no scheme,
-// so normalise to an absolute https URL when one is missing.
+// The deployment sets an absolute https URL. A bare hostname is still accepted
+// and assumed to be https, so a misconfigured value fails loudly on connect
+// rather than silently proxying to a relative path.
 const rawBackendOrigin = process.env.BACKEND_ORIGIN?.trim();
 const backendOrigin = rawBackendOrigin
   ? /^https?:\/\//.test(rawBackendOrigin)
