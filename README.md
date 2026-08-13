@@ -116,6 +116,11 @@ Watch, in the Safety Inspector:
 
 Expect roughly `18 eligible / 32 excluded / 8 down-ranked`.
 
+
+<img width="1864" height="232" alt="image" src="https://github.com/user-attachments/assets/ed14f3e2-3d2b-4a13-a33e-6b1e607ac31a" />
+
+
+
 ### 2 · Interactive adjustment
 
 With a plan on screen, ask:
