@@ -1504,7 +1504,7 @@ Safety & Provenance Inspector.
 | Composition root (no fallback) | `backend/app/api/deps.py` |
 | Liveness / readiness | `backend/app/main.py`, `app/api/schemas.py` |
 | Deployment config | `backend/app/core/config.py`, `.env.example` |
-| Tests | `backend/tests/test_deployment.py` (43), `frontend/tests/deployment.test.tsx` (5) |
+| Tests | `backend/tests/test_deployment.py` (45), `frontend/tests/deployment.test.tsx` (5) |
 
 Verified locally against a real Neo4j: emptied the database, cold-started the
 backend (seeded 237 nodes, readiness `ready`), restarted (logged `graph already
@@ -1512,6 +1512,23 @@ seeded`, stats unchanged), then ran the full functional gate plus the 71-case
 evaluation and all four demo scenarios in `GRAPH_BACKEND=neo4j` mode with
 identical results to memory mode.
 
-Not deployed to Render: no Render API key or CLI is available in this
-environment. The Blueprint, secrets and verification commands are documented in
-the README.
+**Deployed to Render and verified live.** Three services in `oregon`:
+`future-coach-frontend` (web, free), `future-coach-backend` (web, starter,
+REST + `/mcp/`) and `future-coach-neo4j` (private service, starter, 1 GB disk at
+`/data`, no public URL). The deployed backend runs `GRAPH_BACKEND=neo4j`;
+`/health/ready` reports `graph_reachable`, `graph_seeded` and `problems: []`.
+
+Deploying for real found four Blueprint defects that local testing could not:
+the branch was `master` where the repository default is `main`; `BACKEND_ORIGIN`
+addressed a free service over the private network, which can send but not
+receive it; `FRONTEND_ORIGIN` used `fromService … property: host`, which yields
+an internal hostname unusable as a CORS origin; and the Neo4j heap plus
+pagecache exceeded the physical memory of a 512 MB `starter` instance, so the
+process exited 3 before opening a port. Two regression tests now encode the
+first three as rules rather than fixes.
+
+Live parity: cold start seeded 237 nodes in 34.3 s, the following redeploy
+logged `graph already seeded` and completed in 203 ms on the same disk, and the
+71-case evaluation, the demo scenarios and the Static Jump safety verdict are
+identical to local. See the README's *Render deployment* section for URLs and
+the redeploy procedure.

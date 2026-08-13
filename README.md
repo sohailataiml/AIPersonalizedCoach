@@ -1,30 +1,68 @@
-# Future Coach Intelligence Platform
+# Future Coach AI — Knowledge-Graph Backed Workout Intelligence
 
-A coach-facing dashboard with two surfaces — an **AI workout generator** and a
-**member-context copilot** — built on two knowledge graphs.
+A coach-facing system that generates personalized workouts and answers
+member-specific questions, while keeping every safety decision deterministic and
+auditable. A coach types *"45-minute lower body, her left knee is bothering her,
+she only has dumbbells and a kettlebell"*; the system resolves that language onto
+canonical graph concepts, walks the anatomy hierarchy to find what the injury
+actually implicates, filters the catalog, ranks what survives, lets an LLM
+compose a plan **only from graph-approved candidates**, re-validates the result,
+and returns it with a provenance trace of what was excluded and which rule did
+it.
 
-The premise the whole system is organized around:
+> ### The graph decides safety; the LLM composes only from graph-approved candidates.
+>
+> Safety constraints are derived by graph traversal *before* the model is
+> invoked, and every exercise the model returns is re-checked against those same
+> decisions *afterwards*. Safety is a system invariant, not a prompt instruction
+> a model might or might not honor.
 
-> **The knowledge graph owns exercise safety. The LLM does not.**
+## Live demo
 
-Safety constraints are derived by deterministic graph traversal *before* the
-model is invoked, and every exercise the model returns is re-checked against
-those same decisions *afterwards*. Safety is therefore a system invariant, not a
-prompt instruction that a model might or might not honor.
+| Surface | URL | Purpose |
+|---|---|---|
+| **Coach Dashboard** | [future-coach-frontend.onrender.com](https://future-coach-frontend.onrender.com) | Generate and adjust workouts; ask the Coach Copilot |
+| **Knowledge Graph Explorer** | [`/graph`](https://future-coach-frontend.onrender.com/graph) | Inspect the real graph, ontology mappings and safety paths |
+| **System Quality** | [`/system`](https://future-coach-frontend.onrender.com/system) | Evaluation results, invariants, execution traces, MCP observability |
+| **REST API** | [future-coach-backend.onrender.com](https://future-coach-backend.onrender.com) | Typed application APIs ([`/docs`](https://future-coach-backend.onrender.com/docs)) |
+| **MCP Server** | [`/mcp/`](https://future-coach-backend.onrender.com/mcp/) | Seven read-only AI tools over the same domain services |
 
+> **Neo4j intentionally has no public URL.** It runs as a private Render service
+> reachable only by the backend over Render's private network, with `/data` on a
+> persistent disk. There is no public Bolt endpoint, no public Neo4j Browser, and
+> no Neo4j credential anywhere in the browser bundle. `/graph` is the browsing
+> surface, and it is read-only and privacy-filtered.
+
+The deployed backend runs `GRAPH_BACKEND=neo4j` against that private instance —
+`/health/ready` reports it, so the claim is checkable rather than asserted. The
+frontend is on Render's free tier and spins down when idle, so the **first** page
+load after a quiet period can take 30–60s; the backend does not spin down.
+
+## Current quality gate
+
+| Measure | Result |
+|---|---|
+| Evaluation corpus | **71 / 71 cases passing**, 8 categories |
+| Unsafe validation escapes | **0** — a graph-excluded exercise surviving final validation |
+| System invariants | **12 / 12**, each proven by executed cases |
+| Ontology mappings | **29 verified** SNOMED CT concepts, re-resolvable against NCI EVS |
+| MCP tools | **7**, read-only |
+| Deployed graph | **237 nodes / 529 edges** in Neo4j |
+| Backend tests | **502 passing**, green on *both* graph backends |
+| Frontend tests | **187 passing** |
+
+Memory/Neo4j parity and deployed/local parity are both asserted, not assumed:
+the same 71 cases and the same demo scenarios produce identical decisions on
+either backend. These are deterministic regression gates over the scenarios they
+cover — not a proof of universal safety.
 
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/4fc19506-9bcc-4942-9f19-f4f3b4d60ecf" />
-
-
-
-The two knowledge graphs:
-
-<img width="1536" height="1024" alt="Future Dual Knowledge Graph" src="https://github.com/user-attachments/assets/0ff806a5-fc2e-4363-a88b-8110c20bdaa1" />
 
 ---
 
 ## Contents
 
+- [What to try](#what-to-try)
 - [What it does](#what-it-does)
 - [Quick start](#quick-start)
 - [Architecture](#architecture)
@@ -47,9 +85,67 @@ The two knowledge graphs:
 - [Render deployment](#render-deployment)
 - [Evaluation and observability](#evaluation-and-observability)
 - [Evaluating this in production](#evaluating-this-in-production)
+- [Security and trust boundaries](#security-and-trust-boundaries)
 - [Trade-offs and deliberate decisions](#trade-offs-and-deliberate-decisions)
 - [Known limitations](#known-limitations)
 - [How AI was used to build this](#how-ai-was-used-to-build-this)
+
+---
+
+## What to try
+
+Four scenarios on the [live dashboard](https://future-coach-frontend.onrender.com),
+in the order that best shows the architecture.
+
+### 1 · Injury plus equipment constraint
+
+> *"Create a 45-minute lower-body workout. Her left knee is bothering her and she
+> only has dumbbells and a kettlebell."*
+
+Watch, in the Safety Inspector:
+
+- **Concept resolution** — "left knee" and the equipment phrases land on
+  canonical graph concepts, with the pass that resolved each one.
+- **Graph safety filtering** — the knee injury reaches exercises through
+  `AFFECTS` → `PART_OF` closure, not a keyword match.
+- **Equipment filtering** — anything needing a barbell or machine leaves the
+  candidate set.
+- **Longitudinal personalization** — Jordan's declining adherence and low
+  training load bias the plan conservative, *within* the safe set.
+- **Provenance** — every excluded exercise names the rule and shows the path.
+
+Expect roughly `18 eligible / 32 excluded / 8 down-ranked`.
+
+### 2 · Interactive adjustment
+
+With a plan on screen, ask:
+
+> *"Make it more quad focused without aggravating her knee."*
+
+then:
+
+> *"Exclude deadlifts."*
+
+The first re-ranks inside the safe set. The second changes a **hard** decision —
+the hinge family becomes ineligible, and the diff says so explicitly, separating
+*removed because now ineligible* from *merely re-ranked out*. The LLM never edits
+the plan; the whole deterministic pipeline re-runs and the two results are
+diffed.
+
+### 3 · Safety reasoning
+
+Open [`/graph`](https://future-coach-frontend.onrender.com/graph) → **Safety
+reasoning** → Jordan + **Static Jump**.
+
+Expected verdict: **EXCLUDED**, on two independent rules —
+`injury_contraindicated_pattern` and `injury_region_stress` — each with the
+graph path that produced it.
+
+### 4 · System quality
+
+Open [`/system`](https://future-coach-frontend.onrender.com/system): 71/71 cases,
+**0 unsafe escapes**, 12/12 invariants, plus live execution traces from the
+requests you just made.
 
 ---
 
@@ -72,25 +168,14 @@ and computing the numbers in Python, then asking the LLM only to phrase them.
 
 ---
 
-## Live demo
+The two knowledge graphs:
 
-| | |
-|---|---|
-| Dashboard | https://future-coach-frontend.onrender.com |
-| API docs | https://future-coach-backend.onrender.com/docs |
-
-Two caveats worth knowing before you click:
-
-- **Free tier cold starts.** Both services spin down when idle, so the first
-  request can take 30-60s. Subsequent requests are fast (~13 ms end to end).
-- **The deployment runs a real Neo4j**, as a private service with a persistent
-  disk. See [Render deployment](#render-deployment). Browse the graph in-app at
-  `/graph` - Neo4j Browser is deliberately not exposed.
+<img width="1536" height="1024" alt="Future Dual Knowledge Graph" src="https://github.com/user-attachments/assets/0ff806a5-fc2e-4363-a88b-8110c20bdaa1" />
 
 Deployment config lives in [`render.yaml`](render.yaml). The frontend sets a
-relative `NEXT_PUBLIC_API_BASE=/api` and proxies to `BACKEND_ORIGIN` through a
-Next rewrite, so the browser only ever talks to one origin and CORS never
-applies.
+relative `NEXT_PUBLIC_API_BASE=/api` and proxies `/api/*` to the backend through
+a Next rewrite, so the browser only ever talks to one origin and CORS never
+applies to normal traffic. See [Render deployment](#render-deployment).
 
 ---
 
@@ -147,14 +232,15 @@ flowchart LR
     UI[Next.js dashboard]
     API[FastAPI]
     ORCH[LangGraph workflow]
-    RES[Concept resolver<br/>exact → fuzzy → embedding]
+    RES[Concept resolver<br/>exact → alias → fuzzy → lexical vector]
     LONG[Longitudinal trajectory<br/>deterministic, ranking only]
     SAFE[Deterministic safety engine]
     RANK[Ranking]
-    LLM[LLM provider<br/>Anthropic / OpenAI / stub]
+    SAFESET[Safe candidate set]
+    LLM[LLM composition<br/>Anthropic / OpenAI / stub]
     GATE[Post-generation safety gate]
     PROV[Provenance builder]
-    COP[Copilot retrieval + analytics]
+    COP[Copilot + MCP tools]
     KG1[(Movement / Clinical KG)]
     KG2[(Member Context KG)]
 
@@ -164,7 +250,9 @@ flowchart LR
     ORCH --> SAFE
     SAFE --> KG1
     SAFE --> KG2
-    SAFE --> RANK --> LLM --> GATE
+    SAFE --> RANK --> SAFESET
+    SAFESET ==>|only approved candidates cross| LLM
+    LLM --> GATE
     LONG -.->|ranking + volume only| RANK
     GATE -.->|re-checks against| SAFE
     GATE --> PROV --> UI
@@ -172,11 +260,36 @@ flowchart LR
     COP --> LLM
 ```
 
-Two load-bearing details, both dotted. The gate re-checks the model's output
-against the *same* decisions that produced the candidate list. And the
-longitudinal trajectory reaches **ranking only** — it never touches the safety
-engine, so history can reorder a plan but never make an unsafe exercise
+The thick edge is the **safety/trust boundary**: the model receives an
+already-filtered candidate set and cannot reach past it. Two load-bearing details
+are dotted. The gate re-checks the model's output against the *same* decisions
+that produced the candidate list. And the longitudinal trajectory reaches
+**ranking only** — history can reorder a plan, never make an unsafe exercise
 eligible.
+
+The LangGraph workflow runs eight named nodes in a fixed sequence — the node
+names below are the ones in `agents/workout_graph.py`, not a stylized redrawing:
+
+```mermaid
+flowchart TD
+    A[load_member] --> B[parse_intent]
+    B --> C[analyze_longitudinal_context]
+    C --> D[evaluate_safety]
+    D --> E[rank_candidates]
+    E ==> F[compose_workout]
+    F --> G[validate_workout]
+    G --> H[build_provenance]
+
+    classDef det fill:#e8f0fe,stroke:#3b6fb6,color:#10243e
+    classDef llm fill:#fdf0e3,stroke:#c07a2c,color:#3e2a10
+    class A,B,C,D,E,G,H det
+    class F llm
+```
+
+Blue nodes are **deterministic**; the single amber node is the **only** place a
+model runs. It sits after `rank_candidates`, which is what makes "the model
+cannot make an excluded exercise eligible" a structural property rather than a
+promise — and `validate_workout` re-checks its output regardless.
 
 ```
 backend/app/
@@ -408,7 +521,7 @@ Three passes with explicit thresholds, in
 [`backend/app/resolution/resolver.py`](backend/app/resolution/resolver.py):
 
 ```
-normalize → exact/alias → fuzzy (RapidFuzz) → embedding (cosine) → threshold → unresolved
+normalize → exact/alias → fuzzy (RapidFuzz) → lexical vector (cosine) → threshold → unresolved
 ```
 
 | Pass | Confidence | Accept at |
@@ -416,7 +529,7 @@ normalize → exact/alias → fuzzy (RapidFuzz) → embedding (cosine) → thres
 | Exact label | 1.00 | always |
 | Curated alias | 0.98 | always |
 | Fuzzy (WRatio) | computed | ≥ 0.88 |
-| Embedding (cosine) | computed | ≥ 0.82 |
+| Lexical vector (cosine) | computed | ≥ 0.82 |
 | Below threshold | — | **unresolved** |
 
 Every result carries source text, canonical id, type, method and confidence, and
@@ -434,14 +547,33 @@ now correctly resolves to nothing.
 *"unresolved — not guessed"*. Forcing a low-confidence match on clinical language
 is how a system silently applies the wrong safety rule.
 
-**Embeddings are deliberately not a neural model.** The default is a
-deterministic character n-gram TF-IDF vector with cosine similarity. It needs no
-download, no key and no network, so `make dev` and the test suite work anywhere,
-and the embedding pass can be unit-tested with exact expected scores instead of
-being a black box. `EmbeddingBackend` is a Protocol — swapping in
-sentence-transformers or a provider embeddings API is a one-class change. What
-must not change is that embeddings only canonicalise language and never decide
-safety.
+### There is no vector database, and that is deliberate
+
+The fourth pass is often mistaken for one, so to be precise about what exists:
+
+- **No vector database.** No FAISS, Chroma, Pinecone, Qdrant or pgvector. Nothing
+  in the dependency manifests, nothing to operate.
+- **No neural embedding model.** No sentence-transformers, no embeddings API, no
+  model download.
+- **What it actually is:** an in-process, deterministic **sparse character
+  n-gram TF-IDF vector** compared by cosine similarity, over a vocabulary of a
+  few hundred curated labels and aliases. It is a function, not a datastore, and
+  should not be drawn as one.
+
+Why an ANN index was not introduced:
+
+| Reason | Detail |
+|---|---|
+| Tiny curated vocabulary | A few hundred concepts. Exhaustive comparison is microseconds; an index solves a problem this system does not have. |
+| Earlier passes do the work | Exact, alias and fuzzy resolve the overwhelming majority of real coach phrasing. The fourth pass is a safety net for morphological variants. |
+| Safety is traversal, not similarity | The hard reasoning is `AFFECTS` → `PART_OF` → `CONTRAINDICATES`. Nearest-neighbour search cannot express anatomical containment, and semantic *similarity* is exactly the wrong tool for a *clinical* decision. |
+| Testability | A deterministic vector can be unit-tested with exact expected scores. An embedding service makes the resolver a black box and the test suite network-dependent. |
+
+`EmbeddingBackend` is a Protocol, so swapping in sentence-transformers or a
+provider embeddings API is a one-class change if a real vocabulary ever justifies
+it. What must not change is the invariant: this pass only canonicalises
+*language*. A concept resolved this way still has to survive the deterministic
+graph traversal before it can affect a workout.
 
 ---
 
@@ -971,13 +1103,16 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**500 backend tests and 187 frontend tests, all passing**, deliberately
-concentrated on the paths where a bug produces a *confidently wrong* answer
-rather than a visible failure.
+**502 backend tests and 187 frontend tests, all passing.** The backend suite is
+green on **both** graph backends — `GRAPH_BACKEND=memory` and
+`GRAPH_BACKEND=neo4j` — which is the check that makes the parity claim real.
+Coverage is deliberately concentrated on the paths where a bug produces a
+*confidently wrong* answer rather than a visible failure.
 
 ```
 backend/tests/test_resolver.py         normalization, exact/alias, fuzzy typos,
-                                       embedding fallback, thresholds, unresolved
+                                       lexical vector fallback, thresholds,
+                                       unresolved
 backend/tests/test_safety.py           anatomy closure, contraindications, equipment,
                                        exclusions, preferences-never-override-safety
 backend/tests/test_post_validation.py  the safety gate, incl. adversarial end-to-end
@@ -997,9 +1132,10 @@ backend/tests/test_observability.py 41  evaluation harness + tracing:
                                        trace privacy, observational tracing
 backend/tests/test_graph_explorer.py 67 explorer: read-only boundary, privacy
                                        gate, property allowlist, Neo4j parity
-backend/tests/test_deployment.py  43   deployment: no silent fallback,
+backend/tests/test_deployment.py  45   deployment: no silent fallback,
                                        idempotent bootstrap, readiness,
-                                       Blueprint shape, secret hygiene
+                                       Blueprint shape, private-network plan
+                                       rules, secret hygiene
 frontend/tests/                  187   graph reasoning, replay, ontology
                                        grounding, longitudinal context,
                                        path viewer, adjustment + diff,
@@ -1008,8 +1144,24 @@ frontend/tests/                  187   graph reasoning, replay, ontology
 
 Run them with `make test` (backend) and `npm test` in `frontend/`.
 
-Everything runs against the in-memory graph — no Docker, database, network or API
-key — so the highest-risk module is testable on every commit.
+By default everything runs against the in-memory graph — no Docker, database,
+network or API key — so the highest-risk module is testable on every commit. Set
+`GRAPH_BACKEND=neo4j` to run the same suite against a real database.
+
+### Parity matters more than the raw count
+
+A test total is a weak signal. What actually defends this system is a small set
+of tests asserting that two independent paths reach the **same** decision — the
+class of bug that a bigger suite of single-path tests would never catch:
+
+| Parity assertion | Why it matters |
+|---|---|
+| Memory backend ≡ Neo4j backend | Swapping the storage engine cannot change a safety verdict. 71 cases and 3 demo scenarios produce identical counts on both. |
+| MCP tool ≡ direct `SafetyEngine` | The AI-facing interface cannot drift from the engine it wraps. |
+| Graph Explorer ≡ repository evidence | `/graph` renders the same paths the safety pipeline used, not a frontend reconstruction. |
+| Validator ⊇ engine exclusions | The gate cannot admit an exercise the engine excluded, under adversarial model output. |
+| Ontology metadata ⊥ safety output | Adding or removing a SNOMED mapping must not move a single safety decision. |
+| Longitudinal bonus < smallest safety penalty | A ranking preference is arithmetically incapable of overriding an exclusion. |
 
 Notable cases:
 
@@ -1021,6 +1173,35 @@ Notable cases:
 - `test_near_threshold_typo_is_rejected_not_rounded_up` — 0.875 must not squeak
   past a 0.88 gate.
 - `test_workflow_sanitizes_a_jailbroken_plan` — the invariant, end to end.
+
+---
+
+## Performance
+
+All figures below were **measured**, and all of them use `LLM_PROVIDER=stub`.
+That distinction matters: with a real provider, composition dominates everything
+else and end-to-end latency becomes provider latency. These numbers characterise
+*this system's* work — resolution, traversal, ranking, validation — not what a
+coach would experience against Anthropic or OpenAI.
+
+| Measurement | Value | Conditions |
+|---|---|---|
+| Evaluation p50 | **1,068 ms** | 71 cases, Neo4j, stub LLM, includes deliberately adversarial cases |
+| Evaluation p95 | **3,738 ms** | same run |
+| Evaluation total | **100 s** | 71 cases end to end |
+| Cold-start graph bootstrap | **34.3 s** | empty Neo4j → 237 nodes seeded and verified |
+| Warm-start bootstrap | **203 ms** | seed marker found, bootstrap skipped |
+| Explorer depth-1 neighbourhood | 27 nodes / 26 edges | `AnatomicalRegion:knee`, Neo4j |
+| Explorer depth-2 neighbourhood | 94 nodes / 211 edges | same node, at the depth cap |
+| Deployed API round trip | ~180–260 ms | `/health/ready` and `/api/health`, warm |
+
+Two honest caveats. The p50 is dominated by fixture setup inside the evaluation
+harness rather than by graph work — a single warm workout request is far quicker
+than 1s, and the 22s maximum is one adversarial case that intentionally exercises
+the repair path. And the graph is small: 237 nodes and 529 edges fit in page
+cache many times over, so these traversal timings say nothing about how the
+design scales to a real catalog. What they do establish is that the deterministic
+pipeline is not the bottleneck.
 
 ---
 
@@ -1053,8 +1234,8 @@ it is the true minimum rather than a jump to latest. It was verified empirically
 inferred: at that exact floor the MCP ASGI app mounts and a tool round-trip completes.
 
 A clean `pip install -e "backend[dev]"` resolves to the newest compatible set
-(FastAPI 0.141, starlette 1.6, LangGraph 1.2, Neo4j driver 6.2). All 135 tests and all
-three demo scenarios pass on both that resolution and the 0.116.2 floor.
+(FastAPI 0.141, starlette 1.6, LangGraph 1.2, Neo4j driver 6.2). The full backend
+suite and all demo scenarios pass on both that resolution and the 0.116.2 floor.
 
 ---
 
@@ -1186,14 +1367,20 @@ checkable rather than asserted.
 | Service | Type | Plan | Why |
 |---|---|---|---|
 | `future-coach-frontend` | `web` (node) | free | Next.js, proxies `/api/*` to the backend |
-| `future-coach-backend` | `web` (python) | free | FastAPI REST + MCP; the only holder of graph credentials |
-| `future-coach-neo4j` | `pserv` (image) | **starter** | `neo4j:5.26-community`, private, 1 GB disk at `/data` |
+| `future-coach-backend` | `web` (python) | starter | FastAPI REST + MCP; the only holder of graph credentials |
+| `future-coach-neo4j` | `pserv` (image) | starter | `neo4j:5.26-community`, private, 1 GB disk at `/data` |
 
 **Paid resources.** Render persistent disks require a paid instance type, and a
-free web service *cannot receive* private-network traffic - so the Neo4j
-private service must be paid. `starter` is the smallest plan that satisfies
-both. Frontend and backend stay on `free`. This is an interview demo; nothing
-here is sized for production.
+free service *cannot receive* private-network traffic — so the Neo4j private
+service must be paid. `starter` is the smallest plan that satisfies both.
+
+The backend is on `starter` for a different reason: free services spin down when
+idle, and this one performs the graph bootstrap and reports ready only once Neo4j
+verifies. Paying for it buys a demo that answers the first request instead of
+cold-starting a database connection in front of an audience. Dropping it to
+`free` is safe — nothing addresses it privately — at the cost of that first-request
+latency. The frontend stays `free`, so it does spin down. This is an interview
+demo; nothing here is sized for production.
 
 ### The one manual secret
 
@@ -1206,23 +1393,34 @@ fields, both `sync: false` and never committed:
 | `future-coach-neo4j` | `NEO4J_AUTH` | `neo4j/<password>` |
 | `future-coach-backend` | `NEO4J_PASSWORD` | `<password>` |
 
-Everything else is wired by the Blueprint. The private hostname comes from
-`fromService … property: host` rather than being guessed, and the frontend
-origin for CORS comes from the frontend service the same way.
+The private Neo4j hostname comes from `fromService … property: host` rather than
+being guessed. Public origins — the CORS origin and the frontend's proxy target —
+are written out explicitly, because `fromService` exposes only *private* network
+addresses: using one for CORS would publish an internal hostname that matches no
+browser origin.
 
 ### Deploying
 
 ```bash
-# 1. Push the blueprint
-git push origin master
-
-# 2. Render dashboard -> New -> Blueprint -> select this repo
-# 3. Set the two secrets above when prompted
-# 4. Apply
+git push origin main
+# Render dashboard -> New -> Blueprint -> select this repo
+# Set the two secrets above when prompted -> Apply
 ```
 
 First deploy takes a few minutes: Neo4j must boot before the backend passes its
-health check. That is expected and handled - see startup below.
+health check. That is expected and handled — see startup below.
+
+**Three rules the Blueprint has to respect**, each learned by a deploy failing
+rather than by reading ahead:
+
+- **A free service can *send* private-network traffic but cannot *receive* it.**
+  Anything addressed over `fromService` host/port must be on a paid plan. A
+  regression test now asserts this against `render.yaml` instead of a comment.
+- **Region is part of the private network.** All three services must share one
+  region or private DNS does not resolve.
+- **Neo4j validates memory against physical RAM at startup.** `heap.max +
+  pagecache` must leave headroom for the JVM on a 512 MB `starter` instance, or
+  the process exits 3 before it ever opens a port.
 
 ### Graph bootstrap
 
@@ -1470,23 +1668,85 @@ that fail to map to a condition, ontology terms with unverified mappings.
 
 ---
 
+## Security and trust boundaries
+
+Six boundaries, each enforced in code rather than by convention.
+
+**1 · The model sits inside the safe set, never around it.** Composition happens
+after `rank_candidates`. The LLM receives an already-filtered list and has no
+path to the catalog, so it cannot make an excluded exercise eligible — and
+`validate_workout` re-checks its output anyway. Adversarial tests feed the gate
+deliberately jailbroken plans.
+
+**2 · Safety logic exists in exactly one place.** `SafetyEngine` is the only
+component that decides eligibility. The MCP tools, the Copilot and the Graph
+Explorer all call it; none of them re-implement a rule. A parity test asserts the
+MCP verdict equals the direct engine verdict, so the AI-facing surface cannot
+drift.
+
+**3 · No arbitrary graph access from the browser.** `/graph` is not Neo4j
+Browser. The frontend never receives a Bolt URI, a credential, or the ability to
+send Cypher. The backend exposes bounded read-only endpoints: search capped at 50
+results, neighbourhood depth clamped to 2, at most 150 nodes, with truncation
+reported rather than hidden.
+
+**4 · Sensitive member nodes are unreachable, not merely hidden.** The graph holds
+21 node kinds; the explorer allowlist admits **12**. The 9 excluded kinds are the
+observational ones — `BiomarkerObservation`, `LabResult`, `DEXAResult`,
+`ChatMessage`, `AdherenceObservation`, `WorkoutSession`, `ExercisePerformance`,
+`CoachBrief`, `ChurnSignal`. The gate is in the explorer *service*, so a crafted
+API request cannot reach them either. Hiding them in the frontend would have been
+theatre.
+
+**5 · Credentials stay server-side.** FastAPI is the only service holding graph
+credentials. Neo4j has no public URL, no public Bolt port, no public Browser. The
+password is never logged — connection failures report `scheme://host:port` only,
+via a `safe_target()` helper with its own test. The deployed client bundle is
+scanned for `bolt://`, `neo4j://`, `NEO4J_PASSWORD` and the private hostname; all
+zero.
+
+**6 · Observability records metadata, not payloads.** Traces store the classified
+intent, timings, counts and graph-query totals. They deliberately never store the
+coach's question, the member payload, raw labs, authorization headers or raw MCP
+protocol bodies. Removing the tracing layer cannot change a safety decision.
+
+Two further notes. The **MCP transport keeps DNS-rebinding protection enabled**;
+the deployed hostname is allow-listed rather than the protection disabled. And all
+member data is **synthetic** — one fictional member, no real PHI. Nothing here
+claims HIPAA compliance; a production deployment would need identity, RBAC, audit
+retention and a compliance review that this demo does not attempt.
+
+---
+
 ## Trade-offs and deliberate decisions
 
-- **Curated ontology subset over full ingestion.** Justified above. The main cost
-  is that adding a new condition means editing YAML rather than importing a
-  release.
+The decisions most worth challenging in review, each with what it costs:
+
+| Decision | Alternative rejected | Why, and what it costs |
+|---|---|---|
+| **Graph traversal for safety** | RAG over exercise/clinical text | Safety needs *reachability* (`AFFECTS` → `PART_OF` → `CONTRAINDICATES`), which retrieval cannot express and cannot prove. Costs a schema and an ingestion step. |
+| **Neo4j** | Relational model with recursive CTEs | Variable-depth anatomy closure and path *provenance* are native; returning the path that justified a decision is the product feature. Costs an operational dependency. |
+| **No vector database** | FAISS / pgvector / hosted embeddings | A few hundred curated labels; exact + alias + fuzzy already resolve real phrasing. Costs semantic paraphrase recall, which the resolver reports as `unresolved` rather than guessing. |
+| **Curated ontology subset** | Wholesale SNOMED/OWL ingestion | 29 verified mappings that a script re-checks beats a large import nobody validated. Costs coverage: a new condition means editing YAML, not importing a release. |
+| **Deterministic safety engine** | Safety instructions in the system prompt | A prompt is a request; traversal plus a post-hoc gate is a guarantee. Costs expressiveness — the engine only knows rules that were modelled. |
+| **MCP as an adapter layer** | Duplicating logic in AI-facing tools | One `SafetyEngine`, many surfaces, with a parity test proving the tool and the engine agree. Costs an indirection. |
+| **`GraphRepository` Protocol** | Direct driver calls | Two interchangeable backends and unit-testable safety logic with no database. Costs one indirection. |
+| **Read-only Graph Explorer** | Exposing Neo4j Browser | No credentials in the browser, no arbitrary Cypher, member observations unreachable. Costs the free power of a real query console. |
+| **Post-hoc traces** | Invasive instrumentation in the pipeline | Removing tracing cannot change a safety decision. Costs some fidelity — traces are reconstructed from results, not emitted mid-flight. |
+| **Full pipeline re-run for adjustments** | Letting the LLM edit the plan | Every adjustment re-derives safety, so no edit can smuggle an excluded exercise back in. Costs latency and cross-turn composition. |
+| **No streaming** | SSE stage progress | The stub workflow finishes in ~50 ms; streaming would add a transport and a second response path to narrate work already done. Becomes worthwhile with a real provider. |
+| **Private Neo4j + persistent disk** | Managed Aura, or in-memory in prod | Real graph, no public attack surface, data surviving redeploys. Costs ~$7/mo and rules out zero-downtime deploys. |
+
+Further decisions, in prose:
+
 - **Down-rank vs exclude for a recovering injury.** Excluding every knee-loading
   pattern would leave Jordan almost nothing to train and would contradict her
   clinical note. Down-ranking with a ROM caveat is the defensible middle, and the
   policy flips to hard exclusion for acute/moderate injuries. This is the decision
   I would most want a clinician to review.
-- **Deterministic embedder over a neural model.** Testability and zero-setup DX
-  beat marginal recall at this scale. The interface makes it swappable.
-- **Stub LLM as the default.** A reviewer sees the architecture work immediately
-  without a key. Every response is tagged `generator: "stub"` so it never
-  masquerades as model output.
-- **`GraphRepository` Protocol over direct driver use.** Costs one indirection;
-  buys unit-testable safety logic and two interchangeable backends.
+- **Stub LLM as the default, including in the deployment.** A reviewer sees the
+  architecture work immediately without a key. Every response is tagged
+  `generator: "stub"` so it never masquerades as model output.
 - **Hand-written frontend types.** The API surface is small and explicit types are
   clearer in review; the cost is that a backend schema change is caught by tests
   rather than by `tsc`.
@@ -1527,8 +1787,10 @@ This is an assessment prototype, not a production system. Specifically:
   a concept, which is exactly why the audit is a script rather than a sentence.
 - **Duration budgeting is approximate.** Section sizes scale with duration but the
   system does not solve a true time budget from `estimated_rep_duration`.
-- **The embedding pass is lexical.** It catches morphological variants, not
-  semantic paraphrase ("her kneecap grinds" would not resolve).
+- **The fourth resolver pass is lexical, not semantic.** It catches
+  morphological variants, not paraphrase — "her kneecap grinds" would not
+  resolve. That is the accepted cost of having no embedding model or vector
+  store; the pass returns `unresolved` rather than guessing.
 - **No streaming.** Stage-progress streaming was scoped and deliberately
   skipped: the workflow completes in ~50 ms with the offline stub, so a
   progress stream would add an SSE transport, a second response path and new
@@ -1540,15 +1802,30 @@ This is an assessment prototype, not a production system. Specifically:
 - **The evaluation corpus is synthetic and single-member.** 71 cases over one
   member and a 50-row catalog. It measures whether the system behaves as
   designed, not whether the design suits real coaches.
-- **The in-app graph view is a focused path viewer, not a network diagram.** It
-  renders the exact paths the engine walked, grouped by a backend-assigned
-  `path_kind`. It deliberately does not draw the whole graph — the Neo4j browser
-  covers that, and a force-directed blob would explain less.
+- **Graph exploration is bounded by design.** The Safety Inspector renders the
+  exact paths the engine walked, grouped by a backend-assigned `path_kind`;
+  `/graph` adds real neighbourhood exploration, but capped at depth 2 and 150
+  nodes and restricted to 12 of the graph's 21 node kinds. There is no
+  whole-graph view and no Cypher console — a force-directed blob of 237 nodes
+  would explain less, and an open query surface over member data would be a
+  privacy regression.
 - **Adjustment is stateless.** Each adjustment re-runs from the base prompt plus
   one instruction; adjustments do not compose across turns. Asking to exclude
   deadlifts and then to use only dumbbells applies the second to the original
   brief, not to the already-adjusted one.
 - **Backend/frontend contract is not codegen-verified.**
+- **The deployment runs the offline LLM stub.** `LLM_PROVIDER=stub`, so the
+  hosted demo needs no API key and every response is deterministic and free.
+  Composition prose is therefore templated rather than model-written; the graph
+  reasoning, safety gate, provenance and evaluation are identical either way.
+  Setting `LLM_PROVIDER=anthropic` plus a key switches it, and nothing about
+  safety changes — that is the point.
+- **The Render deployment is sized for a demo, not for availability.** Single
+  instance per service, one Neo4j with no replica or read replica, no
+  multi-region graph replication, no automated backup of the persistent disk
+  beyond Render's own, and no horizontal scaling — a disk-backed service cannot
+  zero-downtime deploy. Recovery from total loss is a re-seed from code, which
+  is acceptable precisely because the graph is derived data.
 
 ---
 

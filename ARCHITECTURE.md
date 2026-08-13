@@ -1,323 +1,283 @@
-# ARCHITECTURE.md
+# Future Coach AI — Architecture
 
-# Future Coach Intelligence Platform — Architecture
+The deep technical document. [README.md](README.md) is the product-level tour;
+this is the design defence — invariants, boundaries, failure modes and the
+reasoning behind each decision.
 
-## 1. Purpose
+**Contents**
 
-This document describes the architecture for Future's candidate assessment: a coach-facing dashboard with two integrated surfaces:
-
-1. **Workout Generator** — generates safe, personalized, explainable workouts.
-2. **Coach AI Copilot** — retrieves and summarizes longitudinal member context.
-
-The design intentionally treats the **knowledge graph as the authority for safety and personalization constraints**. The LLM may interpret intent and compose a workout, but it cannot override graph-derived safety decisions.
-
-The architecture is optimized for a one-day take-home while preserving staff-level boundaries, testability, explainability, and a credible path to production.
-
----
-
-## 2. Core Design Principles
-
-### 2.1 The graph, not the LLM, owns safety
-
-The central invariant is:
-
-> Unsafe exercises must be removed or down-ranked by deterministic graph traversal before the LLM can construct the final plan.
-
-The LLM never receives the full unrestricted catalog as the authoritative candidate set.
-
-### 2.2 Resolve language into canonical concepts
-
-Coach input such as:
-
-- "bad lower back"
-- "left knee is bothering her"
-- "DB only"
-- "exclude deadlifts"
-
-must be mapped to canonical graph entities before reasoning begins.
-
-Resolution uses:
-
-1. exact alias match
-2. fuzzy match
-3. embedding/vector fallback
-4. confidence threshold
-5. graceful unresolved state
-
-### 2.3 Explain every important decision
-
-Recommendations should carry provenance:
-
-- which member facts were used
-- which canonical concepts were resolved
-- which graph paths were traversed
-- why an exercise was included
-- why an exercise was filtered
-- whether the decision came from graph rules or the LLM
-
-### 2.4 Keep the two graphs conceptually separate
-
-The domain and member graphs solve different problems:
-
-- **Movement / Clinical KG** = durable domain knowledge
-- **Member Context KG** = longitudinal state for one member
-
-They are connected at query time through shared concepts such as injuries, anatomy, equipment, goals, and exercise history.
-
-### 2.5 Optimize for reviewability
-
-Because this is a one-day assessment, the solution favors:
-
-- small, meaningful ontology subsets
-- deterministic rules
-- typed APIs
-- explicit module boundaries
-- high-value tests
-- visible reasoning in the UI
-
-over production-scale infrastructure.
+1. [Executive architecture summary](#1-executive-architecture-summary)
+2. [Design invariants](#2-design-invariants)
+3. [System context](#3-system-context)
+4. [Component architecture](#4-component-architecture)
+5. [Knowledge graph model](#5-knowledge-graph-model)
+6. [Ontology grounding](#6-ontology-grounding)
+7. [Concept resolution](#7-concept-resolution)
+8. [Safety engine](#8-safety-engine)
+9. [LangGraph workflow](#9-langgraph-workflow)
+10. [Longitudinal reasoning](#10-longitudinal-reasoning)
+11. [Composition and validation](#11-composition-and-validation)
+12. [Interactive adjustment](#12-interactive-adjustment)
+13. [Provenance](#13-provenance)
+14. [Coach Copilot and MCP](#14-coach-copilot-and-mcp)
+15. [Knowledge Graph Explorer](#15-knowledge-graph-explorer)
+16. [Evaluation and observability](#16-evaluation-and-observability)
+17. [Repository abstraction](#17-repository-abstraction)
+18. [Render deployment architecture](#18-render-deployment-architecture)
+19. [Security and privacy boundaries](#19-security-and-privacy-boundaries)
+20. [Failure modes](#20-failure-modes)
+21. [Performance characteristics](#21-performance-characteristics)
+22. [Architecture decisions and trade-offs](#22-architecture-decisions-and-trade-offs)
 
 ---
 
-## 3. High-Level Architecture
+## 1. Executive architecture summary
+
+A coach-facing system with two surfaces — a **workout generator** and a
+**member-context copilot** — over two knowledge graphs, deployed on Render with a
+private Neo4j.
+
+The organising principle is a single sentence:
+
+> **The graph decides safety; the LLM composes only from graph-approved
+> candidates.**
+
+Everything structural follows from it. Safety is computed by deterministic graph
+traversal *before* a model is invoked. The model receives an already-filtered
+candidate set, so it has no mechanism to make an excluded exercise eligible.
+Whatever it returns is re-checked against the same decisions afterwards. Safety
+is therefore a property of the system's shape, not of prompt wording.
+
+Three consequences are worth stating up front, because they explain choices that
+would otherwise look over-engineered:
+
+- **One safety implementation.** `SafetyEngine` is the only component that
+  decides eligibility. REST, MCP, the Copilot and the Graph Explorer all call
+  it. None re-implement a rule, and parity tests assert they agree.
+- **Explanation is a product feature, not logging.** Every exclusion carries the
+  rule that produced it and the graph path that justified it, which is why the
+  store is a graph rather than a set of tables.
+- **The deployment is part of the design.** Real Neo4j, private, persistent, with
+  readiness that fails closed rather than degrading silently to an in-memory
+  store.
+
+**Current measured state:** 71/71 evaluation cases, 0 unsafe escapes, 12/12
+invariants, 29 verified ontology mappings, 7 MCP tools, 237 nodes / 529 edges,
+502 backend tests green on both graph backends, 187 frontend tests.
+
+---
+
+## 2. Design invariants
+
+These are the properties the system is built to hold. Each is enforced in code
+and covered by tests; where an evaluation case proves it, the case category is
+named.
+
+| # | Invariant | How it is enforced |
+|---|---|---|
+| 1 | **Safety is deterministic.** No model participates in an eligibility decision. | `SafetyEngine` is pure graph traversal plus set logic. `safety` cases. |
+| 2 | **The LLM cannot make an excluded exercise eligible.** | Composition runs after `rank_candidates` and receives only the safe set; `validate_workout` re-checks output. `validation` cases, incl. adversarial. |
+| 3 | **Safety logic exists in exactly one place.** | MCP tools, Copilot and Explorer call `SafetyEngine`; a parity test asserts MCP ≡ direct engine. |
+| 4 | **The MCP layer implements no safety rules.** | Tools are adapters over domain services; `mcp_safety_parity` metric. |
+| 5 | **The Graph Explorer implements no safety rules.** | It renders decisions from the same repository and engine; explorer/repository parity tests. |
+| 6 | **Longitudinal personalization cannot override safety.** | Exclusion happens before ranking, and `MAX_LONGITUDINAL_ADJUSTMENT` (6.0) is strictly less than `SMALLEST_SAFETY_PENALTY` (8.0) — arithmetically incapable of reversing an exclusion. |
+| 7 | **Missing evidence stays missing.** | Below-threshold resolution returns `unresolved`; absent metrics return `insufficient_data`. Neither is filled in by a model. |
+| 8 | **No fabricated graph relationships.** | Provenance distinguishes traversal evidence from set operations; a set difference is never rendered as an edge. |
+| 9 | **Ontology metadata does not alter safety semantics.** | Mappings are annotations on local concepts; a test asserts safety output is byte-identical with and without them. |
+| 10 | **A Neo4j failure never silently switches storage engines.** | In `neo4j` mode there is no memory fallback; `/health/ready` returns 503. |
+| 11 | **The browser never receives graph credentials.** | Only FastAPI holds them; the deployed client bundle is scanned for Bolt URIs, passwords and the private hostname. |
+| 12 | **Observability never records protected raw payloads.** | Traces store intent, timings and counts — never the question, member payload, labs, headers or MCP bodies. |
+
+---
+
+## 3. System context
 
 ```mermaid
 flowchart LR
-    Coach[Coach Browser]
-    UI[Next.js / React Dashboard]
-    API[FastAPI API Layer]
-    ORCH[Agentic Runtime / LangGraph]
-    RES[Concept Resolver]
-    SAFE[Deterministic Safety Engine]
-    PLAN[Workout Planner]
-    COPILOT[Member Copilot]
-    PROV[Provenance Builder]
-    KG1[(Movement / Clinical KG)]
-    KG2[(Member Context KG)]
-    VEC[(Embedding Index)]
-    LLM[LLM Provider]
+    Coach["Coach<br/>browser"]
+    Ext["External MCP client<br/>Claude Desktop, agents"]
 
-    Coach --> UI
-    UI --> API
+    subgraph Render["Render"]
+        FE["Next.js dashboard<br/>public HTTPS"]
+        BE["FastAPI<br/>REST + MCP"]
+        DB[("Neo4j<br/>private service<br/>NO PUBLIC URL")]
+        Disk[["Persistent disk<br/>/data"]]
+    end
 
-    API --> ORCH
-
-    ORCH --> RES
-    RES --> KG1
-    RES --> VEC
-
-    ORCH --> SAFE
-    SAFE --> KG1
-    SAFE --> KG2
-
-    ORCH --> PLAN
-    PLAN --> LLM
-    PLAN --> SAFE
-    PLAN --> PROV
-    PROV --> KG1
-    PROV --> KG2
-
-    ORCH --> COPILOT
-    COPILOT --> KG2
-    COPILOT --> LLM
-
-    API --> UI
+    Coach --> FE
+    FE -->|"/api proxy"| BE
+    Ext -->|"/mcp/"| BE
+    BE -->|"private Bolt"| DB
+    DB --- Disk
 ```
+
+The browser talks to exactly one origin. Neo4j is reachable only from the
+backend, over Render's private network; it has no public URL, no public Bolt
+port and no exposed Browser.
 
 ---
 
-## 4. Technology Choices
+## 4. Component architecture
 
-## Frontend — Next.js + React + TypeScript
+```mermaid
+flowchart TB
+    subgraph EXP["Coach experience"]
+        D["Coach dashboard"]
+        WG["Workout generator"]
+        CP["Copilot panel"]
+        SI["Safety inspector"]
+        GE["Graph explorer"]
+        SQ["System quality"]
+    end
 
-Why:
+    subgraph APP["Application / agent layer"]
+        API["FastAPI"]
+        LG["LangGraph runtime"]
+        CR["Concept resolver"]
+        LA["Longitudinal analyzer"]
+        SE["Safety engine"]
+        RK["Ranker"]
+        LLM["LLM composer"]
+        VA["Validator"]
+        PB["Provenance builder"]
+        MCP["MCP server"]
+    end
 
-- fast UI development
-- strong typed API contracts
-- straightforward charting and streaming
-- easy component decomposition
-- natural fit for a polished coach dashboard
+    subgraph KNOW["Knowledge layer"]
+        GR["GraphRepository protocol"]
+        N4J[("Neo4j: movement KG,<br/>member KG, ontology")]
+        MEM[("MemoryRepository<br/>tests and local")]
+    end
 
-Recommended UI libraries:
+    subgraph QA["Quality / governance"]
+        EV["Evaluation runner"]
+        IN["Invariant checks"]
+        TR["Execution traces"]
+        OB["MCP observability"]
+        ON["Ontology verification"]
+    end
 
-- Tailwind CSS
-- shadcn/ui
-- Recharts
-- TanStack Query
+    D --> API
+    WG --> API
+    CP --> API
+    SI --> API
+    GE --> API
+    SQ --> API
 
-The frontend contains no business-critical safety rules.
+    API --> LG
+    API --> MCP
+    LG --> CR --> GR
+    LG --> LA --> GR
+    LG --> SE --> GR
+    SE --> RK
+    RK ==>|"SAFE CANDIDATE BOUNDARY"| LLM
+    LLM --> VA --> PB
+    VA -.->|"re-checks"| SE
+    MCP --> SE
 
-## Backend — FastAPI + Python
+    GR --> N4J
+    GR --> MEM
 
-Why:
-
-- natural fit for graph, embeddings, and LLM libraries
-- Pydantic provides strong structured contracts
-- concise implementation for a time-boxed assignment
-- async support for LLM and graph calls
-- easy unit testing with pytest
-
-## Graph Store — Neo4j
-
-Why:
-
-- graph traversal is central to the assignment
-- Cypher makes safety logic visible and reviewable
-- easy to demonstrate anatomy hierarchy traversal
-- supports graph visualization during review
-- clear provenance paths
-
-For the take-home, a single Neo4j instance can store two logical subgraphs identified by labels and relationship types.
-
-A lightweight in-memory repository abstraction may be used in unit tests.
-
-## Agent Runtime — LangGraph
-
-Why:
-
-- explicit workflow graph
-- stateful multi-step orchestration
-- keeps deterministic tools separate from generative steps
-- easy to show where the LLM participates and where it does not
-
-The runtime should remain intentionally small.
-
-## LLM
-
-Use one provider behind an interface such as:
-
-```python
-class LLMClient(Protocol):
-    async def generate_structured(...): ...
-    async def answer_grounded(...): ...
+    EV --> API
+    EV --> IN
+    TR --> API
+    OB --> MCP
+    ON --> GR
 ```
 
-The architecture must not depend on a specific provider.
-
-## Embeddings
-
-Used only as the **third-pass concept-resolution fallback**.
-
-Embeddings must never determine safety directly.
+The thick edge is the trust boundary. Everything upstream of it is
+deterministic; the composer is the only component downstream, and the validator
+immediately re-subordinates its output to the engine.
 
 ---
 
-## 5. Repository Structure
+## 5. Knowledge graph model
+
+Two graphs, deliberately separate, joined only through canonical domain nodes.
+The deployed graph holds **237 nodes across 21 kinds and 529 edges across 27
+types**.
+
+### 5.1 KG1 — movement / clinical domain
+
+| Node | Count | Notes |
+|---|---|---|
+| `Exercise` | 50 | `priority_tier`, `is_bilateral`, `bilateral_pair_id` |
+| `MovementPattern` | 36 | `squat`, `hinge`, `horizontal_push`, `plyometric` … |
+| `Equipment` | 32 | `dumbbell`, `kettlebell`, `barbell`, `bench` … |
+| `OntologyConcept` | 29 | verified external identifiers only |
+| `Muscle` | 19 | |
+| `AnatomicalRegion` | 14 | joints and regions, hierarchical |
+| `MovementFamily` | 9 | groups patterns for family-level exclusion |
+| `InjuryCondition` | 3 | clinical conditions, not member instances |
+
+```mermaid
+flowchart LR
+    M["Member"] -->|HAS_INJURY| I["Injury"]
+    I -->|MAPS_TO| IC["InjuryCondition"]
+    IC -->|AFFECTS| A1["AnatomicalRegion<br/>patellofemoral joint"]
+    A1 -->|PART_OF| A2["AnatomicalRegion<br/>knee"]
+    IC -->|CONTRAINDICATES| P["MovementPattern"]
+
+    E["Exercise"] -->|HAS_PATTERN| P
+    E -->|IN_FAMILY| F["MovementFamily"]
+    E -->|STRESSES| A2
+    E -->|TARGETS| MU["Muscle"]
+    E -->|REQUIRES| EQ["Equipment"]
+    M -->|HAS_EQUIPMENT| EQ
+
+    A2 -->|SKOS_EXACT_MATCH| OC["OntologyConcept<br/>SNOMED CT 72696002"]
+```
+
+The **`PART_OF` closure is doing real safety work**, and it is the clearest
+argument for a graph. A knee injury must implicate an exercise that stresses the
+patellofemoral joint even though the strings differ and no direct edge exists.
+Traversal expresses that; a `WHERE region = 'knee'` filter does not.
+
+### 5.2 KG2 — member context
+
+One synthetic member, Jordan Rivera, with time-stamped observations rather than
+collapsed properties:
 
 ```text
-future-coach-ai/
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   ├── features/
-│   │   ├── workout-generator/
-│   │   ├── copilot/
-│   │   └── provenance/
-│   └── lib/
-│
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── domain/
-│   │   ├── graph/
-│   │   │   ├── movement/
-│   │   │   ├── member/
-│   │   │   └── repository.py
-│   │   ├── resolution/
-│   │   ├── safety/
-│   │   ├── agents/
-│   │   ├── provenance/
-│   │   ├── llm/
-│   │   └── ingestion/
-│   └── tests/
-│
-├── data/
-│   ├── exercises.json
-│   └── member-context.json
-│
-├── scripts/
-│   └── seed_graph.py
-│
-├── docker-compose.yml
-├── ARCHITECTURE.md
-├── IMPLEMENTATION.md
-└── README.md
+(:Member)-[:HAS_GOAL]->(:Goal)                    (:Member)-[:HAS_INJURY]->(:Injury)
+(:Member)-[:HAS_PREFERENCE]->(:Preference)        (:Injury)-[:MAPS_TO]->(:InjuryCondition)
+(:Member)-[:HAS_EQUIPMENT]->(:Equipment)          (:Member)-[:COMPLETED]->(:WorkoutSession)
+(:WorkoutSession)-[:CONTAINS]->(:ExercisePerformance)
+(:Member)-[:HAS_ADHERENCE]->(:AdherenceObservation)
+(:Member)-[:HAS_BIOMARKER]->(:BiomarkerObservation)
+(:Member)-[:HAS_LAB_RESULT]->(:LabResult)         (:Member)-[:HAS_DEXA_RESULT]->(:DEXAResult)
+(:Member)-[:PARTICIPATED_IN]->(:ChatMessage)      (:Member)-[:HAS_BRIEF]->(:CoachBrief)
+(:Member)-[:HAS_CHURN_SIGNAL]->(:ChurnSignal)
 ```
+
+Nine of these kinds are **observational and sensitive** — biomarkers, labs, DEXA,
+chat, adherence, sessions, performances, coach brief, churn signal. They exist in
+the graph because the reasoning needs them, and they are deliberately
+unreachable from the Explorer API (§15, §19).
+
+### 5.3 Why the graphs stay separate
+
+The member is never embedded into the domain ontology. Jordan's injury is a
+member-scoped `Injury` node that `MAPS_TO` a shared `InjuryCondition`. That keeps
+clinical vocabulary reusable across members and keeps member data out of the
+domain model — the join happens at query time, deterministically.
 
 ---
 
-# 6. Knowledge Graph 1 — Movement / Clinical Domain
+## 6. Ontology grounding
 
-## 6.1 Node Types
+**Mapping, not replacement.** Local concepts stay authoritative for reasoning;
+published identifiers are annotations attached to them. This is the design
+decision that makes the rest defensible: safety semantics cannot shift because a
+terminology release restructured a concept.
 
-### Exercise
+### 6.1 What is mapped
 
-Properties:
-
-```text
-id
-name
-description
-priority_tier
-is_bilateral
-bilateral_pair_id
-```
-
-### Muscle
+**29 concepts, all SNOMED CT**, each resolved against the NCI EVS REST API and
+recorded with the evidence that confirmed it:
 
 ```text
-id
-name
-ontology_uri?
-ontology_source?
-```
-
-### AnatomicalRegion
-
-Represents joints and body regions.
-
-Examples:
-
-- Knee
-- Left Knee
-- Patellofemoral Joint
-- Lumbar Region
-- Shoulder
-
-### MovementPattern
-
-Examples:
-
-- squat
-- hinge
-- horizontal_push
-- vertical_pull
-
-### Equipment
-
-Examples:
-
-- dumbbell
-- kettlebell
-- barbell
-- bench
-
-### InjuryCondition
-
-Examples:
-
-- knee pain
-- ACL injury
-- lumbar pain
-
-### OntologyConcept
-
-An explicit node for a published-ontology concept a local concept is mapped to.
-Created **only** where the identifier was resolved against the source
-terminology — 29 today, all SNOMED CT.
-
-```text
-id            e.g. "SNOMED_CT:72696002"
+id            SNOMED_CT:72696002
 source        SNOMED_CT
 code          72696002
 uri           http://snomed.info/id/72696002
@@ -327,1003 +287,618 @@ evidence      how the code was resolved and what confirmed it
 status        verified
 ```
 
-A concept reviewed and deliberately left ungrounded produces **no node and no
-edge**; it is recorded in the `unmapped` register in `mappings.yaml` instead, so
-the graph never asserts an external identity it cannot support. See the README's
-*Ontology decisions* section for what is mapped and what is not.
+Mappings use **SKOS** predicates, chosen per concept rather than uniformly:
+
+| Predicate | Meaning | Example |
+|---|---|---|
+| `SKOS_EXACT_MATCH` | the concepts are interchangeable | `anatomy:knee` → SNOMED CT `72696002` *Knee region structure* |
+| `SKOS_CLOSE_MATCH` | close but not interchangeable | a local region whose boundaries differ slightly |
+| `SKOS_BROAD_MATCH` | the target is broader | a specific local structure under a general clinical concept |
+
+### 6.2 What is deliberately not mapped
+
+**OPE and COPPER carry no identifiers.** BioPortal requires an account key and
+OLS4 does not serve them, so no identifier from either could be *verified*. None
+was invented. Equipment, movement patterns and 7 of 19 muscle groups therefore
+stay local-only, and the `unmapped` register in `mappings.yaml` records each
+decision with its reason.
+
+A concept reviewed and left ungrounded produces **no node and no edge**. The
+graph never asserts an external identity it cannot support.
+
+### 6.3 Verification is executable
+
+`scripts/verify_ontology.py` audits structure offline and, with `--live`,
+re-resolves every code against NCI EVS. Current result: **29 ok, 0 warnings, 0
+failures**.
+
+This exists because of a real finding. Several SNOMED codes inherited in the
+first pass were wrong — some returned 404, and two resolved to concepts with no
+clinical relationship to the intended one at all. A plausible-looking numeric
+identifier is exactly the kind of error that survives review indefinitely, so
+terminology verification became a script that runs rather than a claim in a
+document. The audit is opt-in for the live call so the test suite stays offline
+and deterministic.
+
+**Ontology metadata cannot alter safety.** Invariant 9 is asserted directly: the
+same request produces identical safety output with mappings present and absent.
 
 ---
 
-## 6.2 Edge Types
+## 7. Concept resolution
 
-```text
-(:Exercise)-[:TARGETS]->(:Muscle)
-(:Exercise)-[:STRESSES]->(:AnatomicalRegion)
-(:Exercise)-[:REQUIRES]->(:Equipment)
-(:Exercise)-[:HAS_PATTERN]->(:MovementPattern)
-
-(:AnatomicalRegion)-[:PART_OF]->(:AnatomicalRegion)
-
-(:InjuryCondition)-[:AFFECTS]->(:AnatomicalRegion)
-(:InjuryCondition)-[:CONTRAINDICATES]->(:MovementPattern|:Exercise)
-
-(:DomainConcept)-[:SKOS_EXACT_MATCH]->(:OntologyConcept)
-(:DomainConcept)-[:SKOS_CLOSE_MATCH]->(:OntologyConcept)
-(:DomainConcept)-[:SKOS_BROAD_MATCH]->(:OntologyConcept)
-```
-
----
-
-## 6.3 Anatomy Hierarchy
-
-The hierarchy is essential for injury reasoning.
-
-Example:
-
-```text
-Patellofemoral Joint
-   └── PART_OF → Knee
-          └── PART_OF → Lower Limb
-```
-
-If a member has a knee injury, an exercise that stresses a child structure of the knee must still be considered relevant.
-
-Safety traversal therefore walks both ancestors and descendants where appropriate.
-
----
-
-## 6.4 Ontology Grounding
-
-Use ontology subsets intentionally.
-
-### OPE
-
-Use for:
-
-- exercise concepts
-- musculoskeletal concepts
-- equipment concepts where useful
-
-Do not ingest the ontology wholesale.
-
-### COPPER
-
-Use selectively for:
-
-- personalization concepts
-- behavior/adherence concepts
-- recommendation context
-
-### SNOMED CT
-
-Use a small set of clinical anatomy/injury concepts relevant to the supplied synthetic member and exercise catalog.
-
-For example:
-
-- knee region
-- lumbar region
-- joint pain concepts
-
-### SKOS
-
-Use to represent mappings between:
-
-- dataset taxonomy
-- local canonical concepts
-- ontology terms
-- aliases
-
-### PROV-O
-
-Use conceptually for recommendation provenance.
-
-The application does not need a complete RDF stack. A clean property graph aligned to PROV-O semantics is acceptable.
-
----
-
-# 7. Knowledge Graph 2 — Member Context
-
-## 7.1 Node Types
-
-```text
-Member
-Goal
-Preference
-Injury
-Equipment
-Workout
-WorkoutSession
-ExercisePerformance
-AdherenceObservation
-BiomarkerObservation
-LabResult
-DEXAResult
-ChatMessage
-CoachBrief
-ChurnSignal
-```
-
-## 7.2 Example Relationships
-
-```text
-(:Member)-[:HAS_GOAL]->(:Goal)
-(:Member)-[:HAS_PREFERENCE]->(:Preference)
-(:Member)-[:HAS_INJURY]->(:Injury)
-(:Injury)-[:MAPS_TO]->(:InjuryCondition)
-
-(:Member)-[:HAS_EQUIPMENT]->(:Equipment)
-
-(:Member)-[:COMPLETED]->(:WorkoutSession)
-(:WorkoutSession)-[:CONTAINS]->(:ExercisePerformance)
-
-(:Member)-[:HAS_ADHERENCE]->(:AdherenceObservation)
-(:Member)-[:HAS_BIOMARKER]->(:BiomarkerObservation)
-(:Member)-[:HAS_LAB_RESULT]->(:LabResult)
-
-(:Member)-[:PARTICIPATED_IN]->(:ChatMessage)
-(:Member)-[:HAS_CHURN_SIGNAL]->(:ChurnSignal)
-(:Member)-[:HAS_BRIEF]->(:CoachBrief)
-```
-
-Time-series observations retain timestamps rather than being collapsed into one member property.
-
----
-
-# 8. Connecting the Graphs
-
-The graphs connect through canonical domain nodes.
-
-Example:
-
-```text
-Jordan
-  └── HAS_INJURY → JordanLeftKneeInjury
-          └── MAPS_TO → KneePain
-                  └── AFFECTS → Knee
-
-GobletSquat
-  └── STRESSES → Knee
-```
-
-This enables deterministic reasoning without embedding the member directly into the domain ontology.
-
----
-
-# 9. Concept Resolution
-
-## 9.1 Pipeline
+Four passes with explicit thresholds, in `resolution/resolver.py`:
 
 ```mermaid
 flowchart LR
-    A[Free Text]
-    B[Normalize]
-    C[Exact / Alias Match]
-    D[Fuzzy Match]
-    E[Embedding Fallback]
-    F{Confidence >= threshold?}
-    G[Canonical Concept]
-    H[Unresolved Concept]
-
-    A --> B --> C
-    C -->|no strong match| D
-    D -->|no strong match| E
-    C --> F
-    D --> F
-    E --> F
-    F -->|yes| G
-    F -->|no| H
+    T["Free text"] --> N["Normalize"]
+    N --> E["Exact / alias<br/>1.00 / 0.98"]
+    E -->|miss| F["Fuzzy WRatio<br/>accept ≥ 0.88"]
+    F -->|miss| V["Lexical vector cosine<br/>accept ≥ 0.82"]
+    V -->|miss| U["unresolved<br/>near-miss recorded"]
 ```
 
-## 9.2 Example
+Every result carries source text, canonical id, type, method and confidence.
 
-Input:
+### 7.1 The fourth pass is not a vector database
 
-```text
-"Her left knee is bothering her and she only has DBs and a kettlebell."
-```
+It is an **in-process sparse character n-gram TF-IDF vector** compared by cosine
+similarity, over a few hundred curated labels. No FAISS, Chroma, Pinecone,
+Qdrant or pgvector; no sentence-transformers or embeddings API; nothing in the
+dependency manifests. It is a function, not a datastore, and should not be drawn
+as one.
 
-Resolution:
+That is a deliberate trade-off. The vocabulary is tiny, so exhaustive comparison
+costs microseconds and an ANN index solves a problem this system does not have.
+The earlier passes resolve the overwhelming majority of real phrasing. And the
+hard reasoning is *reachability*, not similarity — nearest-neighbour search
+cannot express anatomical containment, and semantic similarity is the wrong tool
+for a clinical decision. `EmbeddingBackend` is a Protocol, so a real model is a
+one-class change if a real vocabulary ever justifies it.
 
-```json
-[
-  {
-    "text": "left knee",
-    "concept": "anatomy:knee:left",
-    "method": "alias",
-    "confidence": 0.99
-  },
-  {
-    "text": "DBs",
-    "concept": "equipment:dumbbell",
-    "method": "alias",
-    "confidence": 0.98
-  },
-  {
-    "text": "kettlebell",
-    "concept": "equipment:kettlebell",
-    "method": "exact",
-    "confidence": 1.0
-  }
-]
-```
+### 7.2 The specificity guard
 
-## 9.3 Thresholds
+RapidFuzz scored `"weird knee-ish thing"` at 0.90 against the alias `knee` — high
+enough to apply a clinical rule the coach never asked for. Confidence is scaled
+by how much of the query the matched alias actually accounts for, with short
+phrases exempt so coach shorthand still works. That phrase now resolves to
+nothing, which is the correct answer.
 
-Suggested:
+### 7.3 Failing gracefully beats coverage
 
-```text
-exact/alias     = 1.00
-fuzzy accept    >= 0.88
-embedding accept >= 0.82
-below threshold = unresolved
-```
-
-Exact thresholds should be calibrated with tests rather than treated as universal constants.
-
-## 9.4 Graceful Degradation
-
-If a clinically meaningful concept cannot be confidently resolved:
-
-- do not guess
-- surface the unresolved phrase
-- avoid silently applying an incorrect safety rule
-- request clarification when interaction allows
-- otherwise produce a conservative result
+Below threshold the resolver returns `unresolved` with the near-miss recorded,
+and the UI shows *"unresolved — not guessed"*. Forcing a low-confidence match on
+clinical language is how a system silently applies the wrong safety rule.
 
 ---
 
-# 10. Deterministic Safety Engine
+## 8. Safety engine
 
-## 10.1 Inputs
+Pure, deterministic, and the only component that decides eligibility.
 
-```text
-resolved coach constraints
-member injuries
-member equipment
-explicit exclusions
-member preferences
-exercise catalog graph
-```
+**Inputs:** member context, resolved concepts, the exercise catalog, explicit
+exclusions, available equipment.
+**Output:** per-exercise `SafetyDecision` — `eligible` / `excluded` /
+`downranked` — each with `rule_id`, human reason and supporting graph path.
 
-## 10.2 Output
+### 8.1 Rules
 
-For every exercise:
+| `rule_id` | Trigger | Effect |
+|---|---|---|
+| `explicit_exclusion` | coach named it, or its family | exclude |
+| `injury_contraindicated_pattern` | injury condition `CONTRAINDICATES` the exercise's pattern | exclude |
+| `injury_region_stress` | exercise `STRESSES` a region reachable from the injury via `AFFECTS` + `PART_OF` closure | exclude when loaded/acute, else down-rank |
+| `injury_side_specific` | unilateral exercise on the injured side | down-rank |
+| `equipment_unavailable` | `REQUIRES` equipment the member lacks | exclude |
+| `preference_dislike` | member dislikes it | down-rank, never exclude |
+| `unknown_anatomy` | exercise has no anatomical modelling | down-rank |
 
-```json
-{
-  "exercise_id": "goblet-squat",
-  "status": "allowed | excluded | downranked",
-  "score_adjustment": -25,
-  "reasons": [],
-  "graph_paths": []
-}
-```
+The preference/contraindication split is deliberate: a dislike is a preference
+signal and must never masquerade as a clinical constraint. A test asserts a
+preference alone can never produce an exclusion.
 
-## 10.3 Safety Rules
+### 8.2 Worked example — Jordan + Static Jump
 
-### Rule A — Explicit exclusion
-
-If the coach says "exclude deadlifts":
-
-1. resolve `deadlift` to a canonical movement/exercise family
-2. traverse variants
-3. exclude all mapped variants
-
-### Rule B — Injury anatomy
-
-For every member injury:
-
-1. map injury to anatomical region
-2. expand related anatomy through `PART_OF`
-3. find exercises with `STRESSES` relationships into that region/substructure
-4. exclude or down-rank based on severity policy
-
-### Rule C — Contraindication
-
-Traverse:
-
-```text
-InjuryCondition
-  → CONTRAINDICATES
-  → MovementPattern / Exercise
-```
-
-### Rule D — Equipment
-
-An exercise is eligible only if its required equipment is satisfied by the member's available set.
-
-### Rule E — Preferences
-
-Preferences influence ranking, not hard safety, unless explicitly marked as exclusions.
-
----
-
-## 10.4 Example Traversal
-
-```text
-Jordan
- → HAS_INJURY
- → Left Knee Pain
- → MAPS_TO
- → Knee Pain
- → AFFECTS
- → Knee
-
-Goblet Squat
- → STRESSES
- → Patellofemoral Joint
- → PART_OF
- → Knee
-```
-
-Decision:
-
-```text
-Goblet Squat: DOWNRANKED or EXCLUDED
-Reason: exercise stresses anatomy inside injured region
-Source: deterministic graph traversal
-```
-
----
-
-# 11. Workout Generation Runtime
-
-## 11.1 Workflow
+The deployed system returns **EXCLUDED** on two independent rules. The reasoning:
 
 ```mermaid
 flowchart TD
-    A[Coach Request]
-    B[Load Member Context]
-    C[Resolve Concepts]
-    D[Derive Graph Constraints]
-    E[Safety Filter]
-    F[Rank Eligible Exercises]
-    G[LLM Workout Composition]
-    H[Validate Structured Output]
-    I[Post-generation Safety Validation]
-    J[Build Provenance]
-    K[Return Workout]
+    J["Member: Jordan"] -->|HAS_INJURY| LK["Injury: left knee"]
+    LK -->|MAPS_TO| PFPS["InjuryCondition: PFPS"]
+    PFPS -->|AFFECTS| PFJ["AnatomicalRegion:<br/>patellofemoral joint"]
+    PFJ -->|PART_OF| KNEE["AnatomicalRegion: knee"]
+    PFPS -->|CONTRAINDICATES| PLYO["MovementPattern: plyometric"]
 
-    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K
+    SJ["Exercise: Static Jump"] -->|HAS_PATTERN| PLYO
+    SJ -->|STRESSES| KNEE
+
+    PLYO --> R1["rule: injury_contraindicated_pattern"]
+    KNEE --> R2["rule: injury_region_stress"]
+    R1 --> X["EXCLUDED"]
+    R2 --> X
 ```
 
-## 11.2 LLM Responsibilities
+Both rules fire independently — the exercise would be excluded even if only one
+path existed. That redundancy is a property of modelling the domain rather than
+enumerating cases.
 
-The LLM may:
+### 8.3 Three kinds of evidence, never conflated
 
-- interpret workout intent
-- choose among already-approved candidate exercises
-- organize warmup/main/cooldown
-- produce sets/reps/rest
-- explain recommendations in natural language
+Provenance distinguishes them explicitly, because presenting one as another would
+be a fabricated claim:
 
-The LLM may not:
+| Evidence | Example | Rendered as |
+|---|---|---|
+| **Graph traversal** | `PFPS -AFFECTS-> patellofemoral joint -PART_OF-> knee` | a path with real edges |
+| **Set operation** | "excluded because `REQUIRES{barbell}` ⊄ `available{dumbbell, kettlebell}`" | a set statement, **not** an edge |
+| **Ranking arithmetic** | "down-ranked: −8 unloaded injury region, +6 familiar family" | a score breakdown |
 
-- override excluded exercises
-- invent equipment availability
-- invent member injuries
-- invent member history
-- determine whether an injury constraint applies
-
-## 11.3 Defense in Depth
-
-After the LLM returns a structured plan, run every selected exercise back through the deterministic safety engine.
-
-If any exercise fails:
-
-- reject it
-- optionally replace it from the safe candidate pool
-- record the correction in provenance
-
-This proves safety does not rely on prompt compliance.
+A set difference is never drawn as a relationship. If the graph does not encode
+it, the UI does not claim it.
 
 ---
 
-# 12. Provenance Model
+## 9. LangGraph workflow
 
-Each recommendation should expose:
+Eight nodes, fixed sequence, names exactly as in `agents/workout_graph.py`:
+
+```mermaid
+flowchart TD
+    A["load_member"] --> B["parse_intent"]
+    B --> C["analyze_longitudinal_context"]
+    C --> D["evaluate_safety"]
+    D --> E["rank_candidates"]
+    E ==>|"SAFE CANDIDATE BOUNDARY"| F["compose_workout"]
+    F --> G["validate_workout"]
+    G --> H["build_provenance"]
+
+    classDef det fill:#e8f0fe,stroke:#3b6fb6,color:#10243e
+    classDef llm fill:#fdf0e3,stroke:#c07a2c,color:#3e2a10
+    class A,B,C,D,E,G,H det
+    class F llm
+```
+
+Seven deterministic nodes; **one** node where a model runs. The ordering is the
+enforcement mechanism — `compose_workout` cannot reach the catalog, only the
+ranked safe set — and `validate_workout` re-checks its output regardless.
+
+LangGraph rather than handwritten orchestration because the state machine is
+explicit, inspectable and independently testable per node, which matters more
+than the small dependency cost when the sequence *is* the safety argument.
+
+---
+
+## 10. Longitudinal reasoning
+
+One deterministic service, `member/trajectory.py`, producing a typed
+`MemberTrajectory`. All arithmetic is delegated to `copilot.analytics` so trend
+computation exists once.
+
+### 10.1 Signals and levers
+
+| Signal | Derived from | Jordan |
+|---|---|---|
+| Adherence | 4 weekly observations vs the member's own target | declining |
+| Sleep | 7 nights | flat |
+| Training load | sessions vs target | low |
+| Progression | performance history | hold |
+| Injury | recorded status, copied not inferred | recovering |
+
+These reduce to two bounded levers — **volume bias** (conservative) and **novelty
+bias** (low for Jordan) — which reach ranking only.
+
+### 10.2 Why it cannot argue with safety
+
+Three independent guarantees:
+
+1. **Ordering.** Exclusion happens in `evaluate_safety`; the trajectory is
+   consumed in `rank_candidates`. An excluded exercise is not in the set being
+   ranked.
+2. **Arithmetic.** `MAX_LONGITUDINAL_ADJUSTMENT` = 6.0 is strictly less than
+   `SMALLEST_SAFETY_PENALTY` = 8.0. Even at maximum, a longitudinal bonus cannot
+   outrank the smallest safety penalty.
+3. **Provenance.** Any ranking influence appears in the score breakdown, so a
+   preference that moved a plan is always visible.
+
+### 10.3 What is deliberately not inferred
+
+No medical state is derived. Injury trajectory is copied from the recorded
+status. Sleep carries no adequacy judgement, RPE is reported but not read as
+fatigue, and no biomarker — resting HR, HRV — is interpreted as a recovery
+signal, because none arrives with a baseline that would justify it. Where history
+is insufficient the service returns `insufficient_data` rather than guessing.
+`regress` is defined and tested but never fires on this data, because nothing in
+it records a worsening injury.
+
+---
+
+## 11. Composition and validation
+
+The model's job is narrow: given an approved candidate set and a structure
+budget, produce sets, reps, tempo, ordering and coaching cues.
+
+**Defence in depth**, three layers:
+
+1. **Pre-filtering.** Only safe candidates are offered.
+2. **Schema validation.** The response must satisfy a typed contract; invented
+   exercise ids fail closed.
+3. **`validate_and_repair`.** Every returned exercise is re-checked against the
+   engine's decisions. A rejected item is replaced from the safe set, or dropped;
+   the plan never ships an exercise the engine excluded.
+
+The gate reports what it did — `post_validation_rejections`,
+`post_validation_replacements` — so a model misbehaving is visible rather than
+silently patched. Adversarial evaluation cases feed it deliberately jailbroken
+plans, including invented ids and explicitly excluded exercises.
+
+---
+
+## 12. Interactive adjustment
+
+`POST /api/workouts/adjust`. The architectural decision: **the LLM does not
+mutate the plan.**
+
+```mermaid
+flowchart LR
+    A["Coach adjustment"] --> B["Merge into constraints<br/>deterministic intent parse"]
+    B --> C["Full pipeline re-run"]
+    C --> D["New plan"]
+    D --> E["Deterministic diff<br/>vs previous"]
+```
+
+Re-running everything is more expensive than editing, and it is the only version
+that is safe: an edit path would need its own safety logic, which would be a
+second implementation of the rule that must never diverge (invariant 3).
+
+The diff is careful about what it claims:
+
+| Distinction | Meaning |
+|---|---|
+| `now_excluded` | a **hard** decision changed — the exercise became ineligible |
+| re-ranked out | still eligible, simply not selected this time |
+
+It never asserts that a replacement is *equivalent* to what it replaced, because
+the graph does not encode an equivalence relation. Claiming one would be
+fabricated evidence. Adjustment is stateless — each one applies to the base
+prompt plus one instruction, so adjustments do not compose across turns.
+
+---
+
+## 13. Provenance
+
+Every generated plan returns a structured trace: resolved concepts with method
+and confidence, per-exercise decisions with `rule_id` and reason, graph paths for
+traversal-backed decisions, ranking breakdowns, and the counts the gate produced.
+
+PROV-O is applied **conceptually** — the property graph carries
+activity/entity/agent semantics without an RDF stack, which is the right cost
+for a system whose provenance is consumed by a React UI rather than a reasoner.
+
+Provenance is computed per request and returned, not persisted. Production would
+need an audit store; this is a demo boundary and is listed as such.
+
+---
+
+## 14. Coach Copilot and MCP
+
+Seven read-only tools over the same domain services:
+
+`get_member_context` · `resolve_coach_concepts` · `get_member_metric_trend` ·
+`evaluate_exercise_safety` · `get_exercise_provenance` ·
+`get_safe_exercise_candidates` · `evaluate_workout_request`
+
+```mermaid
+flowchart TD
+    Q["Coach question"] --> R["Deterministic tool router<br/>keyword matching, bounded plan"]
+    R --> C["MCP client session"]
+    C --> S["MCP server<br/>tools/list, tools/call"]
+    S --> SVC["Existing domain services"]
+    SVC --> SE["SafetyEngine"]
+    SVC --> AN["Analytics"]
+    SE --> GR["GraphRepository"]
+    AN --> GR
+    GR --> N4J[("Neo4j")]
+    SE --> RES["Authoritative structured results"]
+    AN --> RES
+    RES --> P["LLM phrases the result"]
+    P --> G["SafetyVerdictGuard<br/>prose vs verdict"]
+    G --> OUT["Answer + citations"]
+```
+
+Two properties that are easy to get wrong:
+
+**Tool selection is deterministic.** Routing is keyword matching, not model
+choice. A provider may *refine* a plan but can never remove the safety tool from
+one. Tool selection for a safety question must not drift because a model felt
+creative.
+
+**The model phrases; it does not decide.** The LLM runs strictly *after*
+structured tool results, and `SafetyVerdictGuard` compares its prose against the
+returned verdicts. If the graph said *excluded* and the sentence says *safe*, the
+sentence loses. A system prompt asking a model not to contradict a tool is a
+request; this is a check.
+
+Plans are capped at `MAX_TOOL_CALLS` (4). If MCP is unreachable the Copilot falls
+back to the deterministic dispatcher calling the *same* services — never to model
+judgement. `evaluate_workout_request` deliberately never composes a plan;
+composition stays behind `POST /api/workouts/generate`.
+
+---
+
+## 15. Knowledge Graph Explorer
+
+`/graph`, in three modes: **Explore**, **Safety reasoning**, **Ontology
+grounding**.
+
+**It is not Neo4j Browser, and the difference is the point.** The frontend never
+receives a Bolt URI, a credential, or the ability to send Cypher. The backend
+exposes bounded read-only endpoints:
+
+| Bound | Value |
+|---|---|
+| Search results | ≤ 50 |
+| Neighbourhood depth | ≤ 2 |
+| Nodes per response | ≤ 150 |
+| Explorable node kinds | 12 of 21 |
+| Truncation | reported, never silent |
+
+The **privacy gate lives in the explorer service**, not the UI. Nine
+observational kinds — `BiomarkerObservation`, `LabResult`, `DEXAResult`,
+`ChatMessage`, `AdherenceObservation`, `WorkoutSession`, `ExercisePerformance`,
+`CoachBrief`, `ChurnSignal` — are unreachable through the API, so a crafted
+request cannot retrieve them either. Hiding them in the frontend would have been
+theatre.
+
+The explorer **reuses** the provenance contracts rather than duplicating them:
+Safety-reasoning mode renders the same `DecisionPaths` the Safety Inspector uses,
+from the same repository evidence. It implements no safety rules of its own
+(invariant 5).
+
+---
+
+## 16. Evaluation and observability
+
+Two systems answering different questions, shown together on `/system` and never
+blended.
+
+### 16.1 Offline evaluation
+
+**71 cases across 8 categories**, driving the real code paths:
+
+| Category | Cases | Category | Cases |
+|---|---|---|---|
+| Concept resolution | 13 | Adjustment | 8 |
+| Safety | 11 | Copilot / MCP | 8 |
+| Longitudinal | 10 | Validation / adversarial | 8 |
+| Equipment | 7 | Explicit exclusion | 6 |
+
+Every metric reports **numerator / denominator / value** — never a bare
+percentage. Current measured run, on Neo4j:
+
+```text
+71/71 cases passed   0 failed   0 unsafe escapes   12/12 invariants
+```
+
+`unsafe_escape_rate` is a first-class metric fixed at **0/8**. An unsafe escape
+is a graph-excluded or otherwise invalid exercise **surviving final validation**
+— the one failure this architecture exists to prevent. It is displayed whatever
+its value; hiding it when non-zero would defeat the purpose.
+
+The 12 invariants are each **backed by executed cases**. An invariant with no
+case proving it is not claimed.
+
+### 16.2 Runtime tracing
+
+A bounded in-process ring buffer, capacity **50**, recording per-request intent,
+stage timings, graph query counts and decision counts.
+
+**Removing the tracing layer cannot change a safety decision.** Traces are built
+post-hoc from results rather than emitted mid-pipeline, which costs some fidelity
+and buys the guarantee that observability is not on the critical path.
+
+**Privacy is structural.** A trace never stores the coach's question (only its
+classified intent), the member payload, raw labs, image contents, API keys,
+authorization headers or raw MCP protocol bodies.
+
+### 16.3 Scope
+
+These are deterministic regression gates over the scenarios they cover — one
+synthetic member and a 50-row catalog. They establish that the system behaves as
+designed. They are not evidence of universal safety, and the README says so.
+
+---
+
+## 17. Repository abstraction
+
+`GraphRepository` is a Protocol with two implementations:
+
+| Implementation | Used for |
+|---|---|
+| `MemoryRepository` | unit tests, fast local development, parity testing |
+| `Neo4jRepository` | the deployed system, local integration mode |
+
+Cypher lives in `graph/queries.py` as named constants; the Neo4j repository
+exposes **named operations only**. There is deliberately no generic `execute()`
+— an arbitrary-query method would be the seam through which unbounded access
+later arrives.
+
+The abstraction costs one indirection and buys three things: safety logic that is
+unit-testable with no database, a reviewer who can run everything with no Docker,
+and a parity assertion that swapping the storage engine cannot change a verdict.
+The whole suite runs green under both backends.
+
+**Neither is a fallback for the other.** See §18 and invariant 10.
+
+---
+
+## 18. Render deployment architecture
+
+```mermaid
+flowchart TD
+    B["Browser"] -->|HTTPS| FE["future-coach-frontend.onrender.com<br/>Next.js, free plan"]
+    FE -->|"HTTPS /api proxy"| BE["future-coach-backend.onrender.com<br/>FastAPI REST + /mcp/, starter"]
+    EXT["External MCP client"] -->|"HTTPS /mcp/"| BE
+    BE -->|"private Bolt :7687"| DB[("future-coach-neo4j<br/>private service, starter<br/>NO PUBLIC URL")]
+    DB --> D[["Persistent disk /data, 1 GB"]]
+```
+
+Three services in one region — Render's private network is regional. The backend
+is the only holder of graph credentials.
+
+### 18.1 Backend selection is explicit, and fails closed
+
+The deployment runs `GRAPH_BACKEND=neo4j`. If Neo4j is unavailable, the service
+reports **not ready** and `/health/ready` returns 503. It does **not** fall back
+to `MemoryRepository`.
+
+That fallback existed earlier and was removed deliberately. Both backends produce
+identical decisions, so the fallback would have been *correct* — and still wrong:
+silently swapping the storage engine underneath a safety system means an operator
+who asked for Neo4j gets something else and never learns. A degraded mode nobody
+can detect is worse than an outage everybody can.
+
+### 18.2 Bootstrap ownership
+
+FastAPI's lifespan owns it, because a Render disk is reachable only by its own
+service — any bootstrapper must go over Bolt anyway.
+
+```text
+lifespan -> connect with bounded retry (20 attempts, 8s timeout, backoff)
+         -> read seed metadata
+         -> if unseeded: MERGE the graph (never wipe), record seed version
+         -> verify node/edge counts against expectations
+         -> ready
+```
+
+Idempotent by construction: `MERGE` plus a seed-version marker. Measured on the
+live deployment — cold start seeded **237 nodes in 34.3 s**; the next redeploy
+logged `graph already seeded`, `wrote=False`, and completed in **203 ms**. The
+persistent disk means a backend redeploy does not destroy the graph. A graph
+reset is never run at startup.
+
+### 18.3 Health model
+
+| Endpoint | Question | Depends on the graph |
+|---|---|---|
+| `/health/live` | is the process alive | no |
+| `/health/ready` | are dependencies initialised | **yes** |
+
+`/health/ready` is the Render health-check path, so a deploy is only "successful"
+once the graph is reachable *and* verified:
 
 ```json
-{
-  "exercise": "Dumbbell Romanian Deadlift",
-  "decision": "included",
-  "reasons": [
-    "matches hinge movement intent",
-    "required equipment is available",
-    "no graph-derived knee contraindication found"
-  ],
-  "evidence": [
-    {
-      "path": [
-        "Dumbbell Romanian Deadlift",
-        "REQUIRES",
-        "Dumbbell",
-        "AVAILABLE_TO",
-        "Jordan"
-      ]
-    }
-  ],
-  "decision_source": "knowledge_graph"
-}
+{"status":"ready","environment":"render","graph_backend":"neo4j",
+ "graph_reachable":true,"graph_seeded":true,
+ "seed_version":"…","mcp_enabled":true,"problems":[]}
 ```
 
-Filtered exercises should also be visible.
+No hostname, URI or credential appears in any health response.
 
-This is important because the assessment explicitly asks what was filtered out for safety.
+### 18.4 Three platform rules the Blueprint must respect
+
+Each learned by a deploy failing rather than by reading ahead, and each now
+asserted by a test or encoded in config:
+
+- A free service can **send** private-network traffic but cannot **receive** it,
+  so anything addressed via `fromService` host/port must be on a paid plan.
+- `fromService` exposes only **private** addresses — a CORS origin or a proxy
+  target must be written as its public URL.
+- Neo4j validates `heap.max + pagecache` against **physical** RAM at startup and
+  exits 3 before opening a port if it does not fit.
 
 ---
 
-# 13. Coach AI Copilot
+## 19. Security and privacy boundaries
 
-## 13.1 Responsibilities
+| Boundary | Enforcement |
+|---|---|
+| Model cannot decide safety | composition sits after the safe-candidate boundary; validator re-checks |
+| One safety implementation | `SafetyEngine`; MCP/Explorer/Copilot call it, parity tested |
+| MCP tools are read-only | no tool mutates state; `evaluate_workout_request` never composes |
+| No arbitrary Cypher | named repository operations only; no generic `execute()` |
+| No public Neo4j | private service — no public URL, Bolt port or Browser |
+| No credentials in the browser | client bundle scanned for Bolt URIs, passwords, private hostname |
+| Explorer allowlist | 12 of 21 node kinds; gate in the service, not the UI |
+| Sensitive member nodes | 9 observational kinds unreachable via API |
+| MCP DNS-rebinding protection | enabled; deployed host allow-listed rather than protection disabled |
+| Credential logging | connection errors report `scheme://host:port` via `safe_target()` |
+| Trace privacy | metadata only — never question, payload, labs, headers or MCP bodies |
+| Data | synthetic single member; no real PHI |
 
-The copilot answers member-specific questions such as:
-
-- Show me the brief
-- How is adherence trending?
-- Sleep this week
-- What changed since last week?
-- Plot adherence trend
-- Compare the last four weeks
-- Is this member showing churn risk?
-
-## 13.2 Retrieval Strategy
-
-Use structured graph queries first.
-
-Example:
-
-```text
-Question: "How's adherence trending?"
-    ↓
-Intent classification
-    ↓
-Graph query for adherence observations
-    ↓
-Compute trend
-    ↓
-Provide compact structured evidence to LLM
-    ↓
-Grounded response + optional chart payload
-```
-
-Do not send the entire member JSON to the LLM for every question.
-
-## 13.3 Chart Responses
-
-API response can include:
-
-```json
-{
-  "answer": "Adherence has declined over the last four weeks...",
-  "citations": [...],
-  "chart": {
-    "type": "line",
-    "x": ["W1", "W2", "W3", "W4"],
-    "series": [
-      {
-        "name": "Adherence",
-        "values": [0.86, 0.78, 0.71, 0.62]
-      }
-    ]
-  }
-}
-```
-
-The frontend renders chart payloads deterministically.
+**No HIPAA claim is made.** Production would need identity, RBAC, audit
+retention, encryption review and a compliance assessment this demo does not
+attempt.
 
 ---
 
-# 14. API Design
+## 20. Failure modes
 
-## POST /api/workouts/generate
+| Failure | Detection | Behaviour | Safety consequence |
+|---|---|---|---|
+| Neo4j unavailable at startup | bounded connect retry | readiness fails, 503, `problems[]` populated | **None** — no silent switch to memory |
+| Neo4j unavailable mid-request | driver error | request fails with an error | **None** — no degraded answer |
+| LLM unavailable / errors | provider exception | falls back to the deterministic composer | **None** — candidate set was already filtered |
+| LLM returns an excluded exercise | `validate_and_repair` | replaced from the safe set or dropped; counted in the response | **None** — this is the gate working |
+| LLM invents an exercise id | schema + id validation | rejected, plan fails closed | **None** |
+| MCP unreachable | client session error | Copilot falls back to the deterministic dispatcher over the same services | **None** — never falls back to model opinion |
+| Concept unresolved | below threshold | returns `unresolved` with near-miss; UI shows "not guessed" | Conservative — no rule is applied on a guess |
+| Member metric missing | analytics check | `insufficient_data` | Conservative — no trend invented |
+| Ontology mapping unavailable | loader | concept stays local-only, listed in `unmapped` | **None** — invariant 9 |
+| Explorer asked for a sensitive kind | allowlist in the service | not found / refused | Privacy preserved regardless of client |
+| Evaluation artifact absent | `/system` read | dashboard reports no run rather than fabricating one | **None** — evaluation is offline |
 
-Request:
-
-```json
-{
-  "member_id": "jordan-rivera",
-  "prompt": "45 minute lower body workout. Knee is bothering her. DB and kettlebell only.",
-  "duration_minutes": 45
-}
-```
-
-Response:
-
-```json
-{
-  "workout": {
-    "warmup": [],
-    "main": [],
-    "cooldown": []
-  },
-  "resolved_concepts": [],
-  "filtered_exercises": [],
-  "provenance": []
-}
-```
-
-## POST /api/copilot/chat
-
-```json
-{
-  "member_id": "jordan-rivera",
-  "message": "How is adherence trending?"
-}
-```
-
-## GET /api/members/{member_id}
-
-Returns the coach-facing member summary.
-
-## GET /api/members/{member_id}/history
-
-Returns workout/chat timeline data.
-
-## GET /api/graph/exercises/{exercise_id}/provenance
-
-Optional endpoint for the graph-inspector panel.
+The pattern throughout: **degrade toward saying less, never toward guessing
+more.**
 
 ---
 
-# 15. Frontend Experience
+## 21. Performance characteristics
 
-## Dashboard layout
+All measured with `LLM_PROVIDER=stub`. With a real provider, composition
+dominates and end-to-end latency becomes provider latency — these figures
+characterise this system's own work.
 
-```text
-┌────────────────────────────────────────────────────────────┐
-│ Jordan Rivera    Goals | Injury | Equipment | Adherence   │
-├───────────────────────────────┬────────────────────────────┤
-│                               │                            │
-│ Workout Generator             │ AI Copilot                 │
-│                               │                            │
-│ prompt                        │ quick prompts              │
-│ duration                      │ chat                       │
-│                               │ charts                     │
-│ generated plan                │ member brief               │
-│                               │                            │
-├───────────────────────────────┴────────────────────────────┤
-│ Safety & Provenance Inspector                              │
-└────────────────────────────────────────────────────────────┘
-```
+| Measurement | Value |
+|---|---|
+| Evaluation p50 / p95 | 1,068 ms / 3,738 ms (71 cases, Neo4j) |
+| Evaluation total | 100 s |
+| Cold-start bootstrap | 34.3 s — empty Neo4j to 237 verified nodes |
+| Warm-start bootstrap | 203 ms — marker found, skipped |
+| Explorer depth-1 / depth-2 | 27n·26e / 94n·211e |
+| Deployed API round trip | ~180–260 ms warm |
 
-## Provenance inspector
-
-For each exercise show:
-
-```text
-Goblet Squat                  FILTERED
-
-Reason
-Potential knee stress
-
-Graph path
-Goblet Squat
-  → STRESSES
-Patellofemoral Joint
-  → PART_OF
-Knee
-
-Member condition
-Jordan
-  → HAS_INJURY
-Left Knee Pain
-  → AFFECTS
-Knee
-
-Decision source
-Knowledge Graph ✓
-LLM ✕
-```
-
-This makes the assignment's central architectural requirement visible to the reviewer.
+Two honest caveats. The p50 is dominated by evaluation-harness fixture setup
+rather than graph work, and the 22 s maximum is one adversarial case exercising
+the repair path. And the graph is small — 237 nodes fit in page cache many times
+over — so these timings say nothing about scaling to a real catalog. What they do
+establish is that the deterministic pipeline is not the bottleneck.
 
 ---
 
-# 16. Testing Strategy
-
-High-value tests are prioritized over broad shallow coverage.
-
-## Concept Resolver
-
-Test:
-
-- exact match
-- aliases
-- fuzzy typo
-- embedding fallback
-- below-threshold unresolved input
-- ambiguous terms
-- "bad lower back"
-- "DB only"
-
-## Safety Engine
-
-Test:
-
-- knee injury excludes/down-ranks knee-stressing exercises
-- child anatomy under knee is included in traversal
-- unavailable barbell removes barbell-only exercises
-- dumbbell/kettlebell alternatives remain
-- "exclude deadlifts" removes deadlift variants
-- preference affects ranking but not safety
-- LLM-selected unsafe exercise is rejected during post-validation
-
-## Copilot
-
-Test:
-
-- adherence answer uses graph data
-- missing data is not invented
-- chart payload matches underlying observations
-
----
-
-# 17. Performance
-
-Target:
-
-- end-to-end AI interaction under ~5 seconds
-- graph queries typically under 100 ms locally
-- resolver avoids embedding lookup for exact/fuzzy matches
-- LLM sees only compact safe candidate sets and relevant context
-- member copilot retrieves task-specific slices rather than entire history
-
----
-
-# 18. Observability
-
-For each workout request log:
-
-```text
-request_id
-member_id
-resolver matches + confidence
-graph queries
-number of candidates before safety
-number filtered
-filter reasons
-LLM latency
-LLM token usage
-post-validation corrections
-total latency
-```
-
-Never log secrets.
-
-In a production system, sensitive member data would require stricter controls than this synthetic assessment environment.
-
----
-
-# 19. Production Evaluation
-
-## Safety
-
-Track:
-
-- unsafe recommendation rate
-- graph-filter escape rate
-- false-positive filter rate
-- unresolved clinical concept rate
-- human coach override rate
-
-The most important safety target is effectively:
-
-```text
-unsafe exercise survives deterministic post-validation = 0
-```
-
-## Recommendation Quality
-
-Track:
-
-- coach acceptance rate
-- exercise replacement rate
-- plan regeneration rate
-- workout completion
-- adherence after recommendation
-- diversity vs repetition
-- goal alignment
-
-## Concept Resolution
-
-Track:
-
-- exact resolution accuracy
-- fuzzy resolution accuracy
-- embedding fallback precision
-- unresolved rate
-- false canonicalization rate
-
-## Copilot Retrieval
-
-Track:
-
-- factual grounding accuracy
-- retrieval relevance
-- unsupported claim rate
-- chart correctness
-- task completion time for coaches
-
----
-
-# 20. Failure Modes
-
-## LLM invents an unsafe exercise
-
-Mitigation:
-
-- safe candidate whitelist
-- structured output schema
-- deterministic post-generation validation
-
-## Resolver maps a phrase incorrectly
-
-Mitigation:
-
-- confidence thresholds
-- alias curation
-- ambiguity handling
-- unresolved states
-- evaluation dataset
-
-## Graph lacks a relevant anatomical relationship
-
-Mitigation:
-
-- surface incomplete provenance
-- conservative policy
-- ontology review
-- graph coverage monitoring
-
-## Member data is missing
-
-Mitigation:
-
-- explicitly report insufficient evidence
-- do not infer unknown clinical state
-
-## Graph service unavailable
-
-Safety-sensitive generation should fail closed rather than silently ask the LLM to make the safety decision.
-
----
-
-# 21. Trade-offs
-
-## Neo4j vs an in-memory graph
-
-Neo4j adds setup cost but makes the central evaluation criterion—real graph reasoning—far more visible and defensible.
-
-## LangGraph vs handwritten orchestration
-
-The workflow is small enough to hand-code. LangGraph is used because the assessment explicitly values agentic workflow design and it provides an understandable execution graph. It should not be used to hide ordinary deterministic functions behind unnecessary "agents."
-
-## Ontology subset vs full ontology ingestion
-
-A curated ontology subset is preferred because:
-
-- one-day scope
-- easier semantic review
-- lower accidental complexity
-- demonstrates intentional ontology modeling
-
-## Embeddings vs LLM concept resolution
-
-Embedding fallback is deterministic enough to measure and threshold. Using an LLM alone for canonicalization would make resolution harder to audit and reproduce.
-
----
-
-# 22. Key Architectural Invariants
-
-1. **LLM output cannot bypass the safety engine.**
-2. **Safety is derived from graph relationships, not prompt instructions.**
-3. **Unknown concepts are not silently guessed.**
-4. **Member facts shown by the copilot must come from retrieved member data.**
-5. **Every important recommendation can expose a provenance path.**
-6. **Only synthetic data is used in this assessment.**
-7. **The system remains runnable locally with minimal setup.**
-
----
-
-# 23. What I Would Build Next in Production
-
-With more time:
-
-- production ontology ingestion pipeline
-- richer SNOMED CT mapping
-- graph versioning
-- graph-rule configuration
-- clinician-reviewed safety policies
-- longitudinal personalization features
-- coach feedback learning loop
-- evaluation datasets
-- automated hallucination/grounding evaluation
-- distributed tracing
-- streaming chat
-- role-based access control
-- feature flags
-- model/provider fallback
-- audit trail persistence
-- real graph visualization
-
----
-
-## 12. Evaluation and observability
-
-Two systems answering two different questions. They are shown together on the
-System Quality dashboard and deliberately never blended.
-
-### 12.1 Offline evaluation
-
-```text
-scripts/run_evals.py
-   -> EvaluationRunner (app/evaluation/runner.py)
-        -> EvalCase corpus (app/evaluation/cases.py)   71 cases, 8 categories
-        -> real code paths: SafetyEngine, LangGraph workflow, MCP tools
-   -> EvaluationRun (metrics, invariants, per-case results)
-   -> EvaluationArtifactStore -> artifacts/evals/<run>.json + latest.json
-```
-
-Design constraints:
-
-- Cases are **data**, not code. A reviewer can read what the system is expected
-  to do without reading the harness.
-- Every metric carries `numerator` / `denominator`. A percentage is always
-  derived from a ratio the caller can check.
-- Categories are never averaged. One blended score would let a safety escape
-  hide behind a good resolver run.
-- Invariants are **computed from case outcomes**. An invariant with no covering
-  case does not hold - absence of a failure is not a demonstration.
-- `unsafe_escape` is first-class and must be 0.
-
-Artifacts are JSON on disk, not a database: append-only, small, diffable, and
-committable next to the code that produced them.
-
-### 12.2 Runtime tracing
-
-```text
-route handler
-   -> graph_call_scope()            (ContextVar counter)
-   -> workflow.run(...)             (no tracing code inside)
-   -> build_workflow_trace(state)   (post-hoc projection)
-   -> TraceStore                    (bounded in-process ring buffer)
-```
-
-The load-bearing property: **removing the tracing layer cannot change a safety
-decision.** Traces are assembled *after* a run from state that already exists,
-so `SafetyEngine`, the ranker and the validator contain no instrumentation. A
-test asserts identical decisions with and without the layer.
-
-The single exception is `InstrumentedGraphRepository`, a counting pass-through
-that delegates every call untouched and increments an integer.
-
-### 12.3 Trace privacy
-
-The trace models have **no field** for a member payload, chat history, labs, a
-prompt body, a coach question, an MCP payload, or an authorization header - so
-a future caller cannot add one by passing the wrong argument. Recorded instead:
-ids, durations, zone, aggregate counts, rule ids, resolver *method* counts, and
-the classified copilot intent.
-
-Absent values stay absent: token usage is `null` with the offline stub rather
-than 0, and `graph_query_count` is `null` when no counter was installed.
-
-### 12.4 System Quality dashboard
-
-Route `/system`, sidebar item **Quality**. Reads
-`GET /api/system/evaluations/latest`, `/api/system/evaluations`,
-`/api/system/traces` and `/api/system/traces/{request_id}` - all read-only.
-
-Case detail reuses `DecisionPaths`, the same component the coach graph panel
-uses. There is deliberately no second provenance renderer: two renderers of the
-same evidence eventually disagree, and the one in the engineering dashboard is
-the one nobody would notice drifting.
-
-
----
-
-## 13. Knowledge Graph Explorer
-
-A read-only application feature for inspecting the graph the app reasons on.
-Explicitly **not** Neo4j Browser: no Cypher box, no Bolt URI, no credential, no
-write path.
-
-```text
-React (/graph)
-   -> FastAPI  /api/graph/*            (GET only)
-   -> GraphRepository.search_nodes / get_node / get_neighborhood
-   -> Neo4j (topology via Cypher) | in-memory projection
-```
-
-### 13.1 Boundary
-
-The three repository methods are the whole surface. The client names a node and
-a depth; it cannot express a traversal the API did not design. There is no
-method that accepts a query language and none that writes.
-
-### 13.2 What is exposed
-
-* `EXPLORABLE_KINDS` gates traversal. Member health nodes (LabResult,
-  DEXAResult, BiomarkerObservation, ChatMessage, CoachBrief, ChurnSignal,
-  AdherenceObservation, WorkoutSession) are unreachable - absent from search,
-  from neighborhoods and from the legend. `HAS_INJURY` / `HAS_EQUIPMENT` still
-  show how member context joins the clinical graph.
-* `PROPERTY_ALLOWLIST` gates properties per node kind. An ingestion field added
-  later is invisible until deliberately listed.
-* Limits: search <= 50, depth <= 2, nodes <= 150, with `truncated` and
-  `omitted_count` reported rather than silently applied.
-
-### 13.3 Backend split
-
-Neo4j decides the **topology** (which nodes match, which edges exist) via
-parameterised read-only Cypher constants; the validated projection supplies the
-**typed view** (allowlisted properties, ontology grounding). This is the same
-division `list_exercises` has always used, and it means a drift between what
-was seeded and what the application reasons on surfaces as a parity failure.
-
-### 13.4 Reuse, not duplication
-
-* Safety mode calls the existing `SafetyEngine` and projects through the
-  existing `build_graph_reasoning`, then renders with `DecisionPaths`.
-* Ontology mode renders the Phase 1 mapping set through `GroundingDetail`.
-
-No provenance logic, safety logic or grounding data is re-implemented here.
-
-
----
-
-## 14. Render deployment
-
-```text
-                          INTERNET
-                             |
-            +----------------+----------------+
-            |                                 |
-       Frontend (web, node)            Backend (web, python)
-       Next.js                         FastAPI REST + /mcp
-            |                                 |
-            +----------- HTTPS ---------------+
-                                              |
-                                              | private network, Bolt 7687
-                                              v
-                                    Neo4j (pserv, image)
-                                    neo4j:5.26-community
-                                              |
-                                              v
-                                    persistent disk /data
-```
-
-### 14.1 Trust boundary
-
-The backend is the only service with graph credentials. Neo4j is a private
-service and receives no public URL; port 7687 is never reachable from a
-browser. The read-only Knowledge Graph Explorer at `/graph` replaces Neo4j
-Browser as the inspection surface.
-
-### 14.2 Backend selection
-
-`GRAPH_BACKEND=neo4j` selects `Neo4jGraphRepository` for every consumer -
-workout generation, SafetyEngine, provenance, graph reasoning, explorer, MCP
-tools and Copilot - because all of them resolve through the one composition
-root. There is no per-feature backend choice and, in neo4j mode, no fallback:
-an unreachable graph makes the service unready rather than changing the safety
-implementation underneath it.
-
-### 14.3 Bootstrap ownership
-
-FastAPI's lifespan owns it. A Render disk is reachable only by its own service,
-so any bootstrapper must go over Bolt; putting it in the lifespan means one
-code path seeds locally, in CI and on Render, and the component that verifies
-the seed is the one that will serve the queries.
-
-Idempotence comes from `MERGE` on stable keys plus a `SeedMetadata` version
-marker (outside `EXPLORABLE_KINDS`, so invisible to the explorer). Bootstrap is
-never destructive - `wipe=False` always.
-
-### 14.4 Health model
-
-`/health/live` reports process liveness and never touches the graph.
-`/health/ready` reports reachability and seed verification and answers 503 when
-either fails; it is the configured `healthCheckPath`. Neither exposes a URI,
-credential or stack trace.
+## 22. Architecture decisions and trade-offs
+
+| Decision | Rejected alternative | Rationale and cost |
+|---|---|---|
+| Graph traversal for safety | RAG over clinical/exercise text | Safety needs reachability and proof, which retrieval cannot express. Costs a schema and ingestion. |
+| Neo4j | relational + recursive CTEs | Variable-depth closure and path provenance are native; returning the justifying path *is* the feature. Costs an operational dependency. |
+| No vector database | FAISS / pgvector / hosted embeddings | Few hundred curated labels; earlier passes already resolve real phrasing. Costs paraphrase recall, reported as `unresolved`. |
+| Curated ontology subset | wholesale SNOMED/OWL ingestion | 29 verified mappings a script re-checks beat a large unvalidated import. Costs coverage. |
+| Deterministic safety engine | safety rules in the system prompt | A prompt is a request; traversal plus a gate is a guarantee. Costs expressiveness. |
+| MCP as an adapter layer | duplicating logic in AI tools | One engine, many surfaces, parity tested. Costs an indirection. |
+| `GraphRepository` Protocol | direct driver calls | Two interchangeable backends, database-free tests. Costs an indirection. |
+| Read-only Explorer | exposing Neo4j Browser | No credentials or Cypher in the browser; member observations unreachable. Costs query freedom. |
+| Post-hoc traces | inline instrumentation | Observability cannot alter a safety decision. Costs some fidelity. |
+| Full re-run for adjustments | LLM edits the plan | Every adjustment re-derives safety. Costs latency and cross-turn composition. |
+| LangGraph | handwritten orchestration | Explicit, inspectable, per-node testable state machine. Costs a dependency. |
+| No streaming | SSE stage progress | Stub workflow finishes in ~50 ms. Becomes worthwhile with a real provider. |
+| Private Neo4j + disk | managed Aura, or in-memory in prod | Real graph, no public surface, data survives redeploys. Costs ~$7/mo and zero-downtime deploys. |
+| Stub LLM in the deployment | shipping a provider key | Deterministic, free, keyless demo. Costs model-written prose; safety is identical either way. |
+
+### What production would need next
+
+Ordered by what would block a real deployment first: identity, RBAC and audit
+persistence; clinician-reviewed safety policies; a real ontology ingestion and
+versioning pipeline; exported distributed tracing rather than an in-process ring
+buffer; provider fallback and streaming; graph versioning with migration; a
+coach-feedback loop and population-calibrated longitudinal baselines; and
+evaluation datasets drawn from real usage rather than one synthetic member.
