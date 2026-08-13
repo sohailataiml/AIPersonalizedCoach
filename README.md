@@ -137,14 +137,11 @@ the hinge family becomes ineligible, and the diff says so explicitly, separating
 the plan; the whole deterministic pipeline re-runs and the two results are
 diffed.
 
-### 3 · Safety reasoning
+### 3. Safety reasoning
 
-Open [`/graph`](https://future-coach-frontend.onrender.com/graph) → **Safety
-reasoning** → Jordan + **Static Jump**.
+Open [Graph Explorer](https://future-coach-frontend.onrender.com/graph) → **Safety Reasoning** → search **Static Jump**.
 
-Expected verdict: **EXCLUDED**, on two independent rules —
-`injury_contraindicated_pattern` and `injury_region_stress` — each with the
-graph path that produced it.
+The explorer calls the same deterministic SafetyEngine used by workout generation and shows the actual graph evidence behind the result. With Jordan's current synthetic context, Static Jump is **EXCLUDED**; the member, anatomy, and exercise paths explain why.
 
 ### 4 · System quality
 
