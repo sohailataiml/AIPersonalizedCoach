@@ -1,0 +1,62 @@
+# Render blueprint.
+#
+# Two services. Neo4j is intentionally not deployed: Render has no managed Neo4j,
+# and the in-memory graph backend runs the *identical* traversals behind the same
+# GraphRepository Protocol - verified to produce byte-identical filtering counts
+# on both backends. The deployed demo is therefore fully functional, and a
+# reviewer who wants to browse the graph itself can run `docker compose up`
+# locally.
+#
+# The LLM defaults to the deterministic offline stub, so the deployment needs no
+# API key. Set LLM_PROVIDER + the matching key in the Render dashboard to switch
+# to a real model; nothing about safety changes when you do.
+
+services:
+  - type: web
+    name: future-coach-backend
+    runtime: python
+    plan: free
+    region: oregon
+    branch: master
+    rootDir: .
+    buildCommand: pip install -e backend
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: PYTHONPATH
+        value: backend
+      - key: GRAPH_BACKEND
+        value: memory
+      - key: LLM_PROVIDER
+        value: stub
+      # Allow the frontend service to call the API directly if it ever needs to.
+      - key: CORS_ORIGINS
+        sync: false
+      # The MCP transport validates the Host header (DNS-rebinding protection),
+      # so the public hostname has to be listed or /mcp answers 421.
+      - key: MCP_ALLOWED_HOSTS
+        value: '["future-coach-backend.onrender.com"]'
+
+  - type: web
+    name: future-coach-frontend
+    runtime: node
+    plan: free
+    region: oregon
+    branch: master
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Relative base: the Next server proxies /api/* to BACKEND_ORIGIN, so the
+      # browser only ever talks to this origin and CORS never applies.
+      - key: NEXT_PUBLIC_API_BASE
+        value: /api
+      - key: BACKEND_ORIGIN
+        fromService:
+          type: web
+          name: future-coach-backend
+          property: hostport

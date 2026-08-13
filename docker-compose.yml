@@ -1,0 +1,59 @@
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: future-coach-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/futurecoach
+      NEO4J_server_memory_heap_max__size: 512M
+    ports:
+      - "7474:7474"   # browser - inspect the graph during review
+      - "7687:7687"   # bolt
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - neo4j-data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: future-coach-backend
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      GRAPH_BACKEND: neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: futurecoach
+      # Defaults to the deterministic offline stub so the stack runs with no key.
+      LLM_PROVIDER: ${LLM_PROVIDER:-stub}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # The MCP transport validates the Host header; inside compose the backend
+      # is reached as both localhost:8000 (from the host) and backend:8000.
+      MCP_ALLOWED_HOSTS: '["localhost","localhost:8000","127.0.0.1","127.0.0.1:8000","backend","backend:8000"]'
+    ports:
+      - "8000:8000"
+    # Seed the graph from a clean state, then serve.
+    command: >
+      sh -c "python scripts/seed_graph.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: future-coach-frontend
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000/api
+    ports:
+      - "3000:3000"
+
+volumes:
+  neo4j-data:

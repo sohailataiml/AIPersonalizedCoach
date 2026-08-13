@@ -1,0 +1,380 @@
+# Curated ontology + canonical vocabulary for the Movement/Clinical KG.
+#
+# DESIGN STANCE (see README "Ontology decisions"):
+#   * We do NOT ingest OPE / SNOMED CT / COPPER wholesale. We curate a small
+#     subset that is actually exercised by the supplied catalog and member.
+#   * Every `ontology.code` below is either a SNOMED CT concept id we are
+#     confident about, or omitted entirely. Where we could not verify an
+#     identifier we keep the local canonical concept and set
+#     `ontology.status: unverified` rather than inventing a code. The README
+#     states plainly that production would complete this normalization against
+#     a licensed terminology server (NCI EVS).
+#   * `mapping_predicate` uses SKOS semantics: exactMatch when the local concept
+#     and the external concept denote the same thing, closeMatch when the local
+#     concept is a coarser product-level grouping.
+#
+# The anatomy hierarchy below is the part that does real work: the catalog
+# annotates exercises only at `knee` granularity, while the member's injury is
+# *patellofemoral* pain. PART_OF lets an injury recorded at a sub-structure
+# reach every exercise annotated at the joint above it.
+
+anatomy:
+  knee:
+    label: Knee
+    aliases: [knee, knees, knee joint, kneecap area, left knee, right knee, both knees]
+    part_of: lower_limb
+    ontology:
+      source: SNOMED_CT
+      code: "72696002"
+      term: Knee region structure
+      predicate: skos:exactMatch
+      status: verified
+
+  patellofemoral_joint:
+    label: Patellofemoral Joint
+    aliases: [patellofemoral, patellofemoral joint, kneecap, patella tracking, pfj]
+    part_of: knee
+    ontology:
+      source: SNOMED_CT
+      term: Patellofemoral joint structure
+      predicate: skos:exactMatch
+      status: unverified
+      note: >
+        Local canonical concept retained. A licensed SNOMED CT lookup would
+        confirm the patellofemoral joint structure code before production use.
+
+  tibiofemoral_joint:
+    label: Tibiofemoral Joint
+    aliases: [tibiofemoral, tibiofemoral joint, main knee joint]
+    part_of: knee
+
+  hip:
+    label: Hip
+    aliases: [hip, hips, hip joint]
+    part_of: lower_limb
+    ontology:
+      source: SNOMED_CT
+      code: "29836001"
+      term: Hip region structure
+      predicate: skos:exactMatch
+      status: verified
+
+  ankle:
+    label: Ankle
+    aliases: [ankle, ankles, ankle joint]
+    part_of: lower_limb
+    ontology:
+      source: SNOMED_CT
+      code: "344001"
+      term: Ankle region structure
+      predicate: skos:exactMatch
+      status: verified
+
+  lower_limb:
+    label: Lower Limb
+    aliases: [lower limb, leg, legs, lower body]
+
+  shoulder:
+    label: Shoulder
+    aliases: [shoulder, shoulders, shoulder joint, glenohumeral]
+    part_of: upper_limb
+    ontology:
+      source: SNOMED_CT
+      code: "16982005"
+      term: Shoulder region structure
+      predicate: skos:exactMatch
+      status: verified
+
+  elbow:
+    label: Elbow
+    aliases: [elbow, elbows, elbow joint]
+    part_of: upper_limb
+
+  wrist:
+    label: Wrist
+    aliases: [wrist, wrists, wrist joint]
+    part_of: upper_limb
+
+  upper_limb:
+    label: Upper Limb
+    aliases: [upper limb, arm, arms, upper body]
+
+  lumbar_spine:
+    label: Lumbar Spine
+    aliases:
+      - lumbar spine
+      - lumbar
+      - low back
+      - lower back
+      - bad lower back
+      - bad back
+      - sore lower back
+      - lumbar region
+      - l-spine
+    part_of: spine
+    ontology:
+      source: SNOMED_CT
+      code: "122496007"
+      term: Lumbar spine structure
+      predicate: skos:closeMatch
+      status: verified
+
+  thoracic_spine:
+    label: Thoracic Spine
+    aliases: [thoracic spine, mid back, middle back, t-spine, upper back spine]
+    part_of: spine
+
+  cervical_spine:
+    label: Cervical Spine
+    aliases: [cervical spine, neck, c-spine]
+    part_of: spine
+
+  spine:
+    label: Spine
+    aliases: [spine, back, vertebral column]
+
+# Clinical conditions. `affects` points at an anatomy concept; the safety engine
+# then walks PART_OF from there. `contraindicates` names movement-pattern
+# families that are unsafe for the condition - these come from the injury's own
+# clinical notes, not from a prompt.
+injury_conditions:
+  patellofemoral_pain_syndrome:
+    label: Patellofemoral Pain Syndrome
+    aliases:
+      - patellofemoral pain
+      - patellofemoral pain syndrome
+      - pfps
+      - runners knee
+      - runner's knee
+      - anterior knee pain
+      - kneecap pain
+    affects: patellofemoral_joint
+    ontology:
+      source: SNOMED_CT
+      code: "202383002"
+      term: Patellofemoral pain syndrome
+      predicate: skos:exactMatch
+      status: verified
+    contraindicates_patterns:
+      - "cardio - plyometric"
+      - "lower push - squat"
+      - "lower push - split squat"
+      - "lower push - lunge"
+    contraindication_note: >
+      Derived from the member's recorded clinical note: "avoid deep knee flexion
+      under load and plyometrics". Plyometric patterns are hard-excluded;
+      loaded deep-flexion patterns are excluded only while the injury is acute
+      and down-ranked while recovering (see safety/policies.py).
+
+  knee_pain_generic:
+    label: Knee Pain
+    aliases: [knee pain, sore knee, knee injury, bad knee, knee is bothering her, knee flare-up]
+    affects: knee
+    ontology:
+      source: SNOMED_CT
+      code: "30989003"
+      term: Arthralgia of knee
+      predicate: skos:closeMatch
+      status: verified
+    contraindicates_patterns:
+      - "cardio - plyometric"
+
+  lumbar_pain_generic:
+    label: Low Back Pain
+    aliases: [low back pain, lower back pain, bad lower back, lumbago, back pain]
+    affects: lumbar_spine
+    ontology:
+      source: SNOMED_CT
+      code: "279039007"
+      term: Low back pain
+      predicate: skos:exactMatch
+      status: verified
+    contraindicates_patterns:
+      - "core - extension"
+      - "lower pull - hip lift"
+
+# Equipment aliases. Coach shorthand ("DB", "DBs", "KB") is extremely common and
+# is the highest-value alias set in the whole resolver.
+equipment_aliases:
+  Dumbbell: [db, dbs, dumbbell, dumbbells, dumb bell, free weights]
+  Kettlebell: [kb, kbs, kettlebell, kettlebells, kettle bell]
+  Barbell: [bb, barbell, barbells, bar]
+  "Flat Bench": [bench, flat bench, weight bench]
+  "Adjustable Bench - Incline": [incline bench, adjustable bench incline]
+  "Adjustable Bench - Decline": [decline bench, adjustable bench decline]
+  "Resistance Band - Loop": [band, bands, loop band, resistance band, resistance bands]
+  "Resistance Band - With Handles": [band with handles, handled band, cable band]
+  Miniband: [miniband, mini band, mini-band]
+  "Yoga Mat": [mat, yoga mat, exercise mat]
+  "Pull-Up Bar": [pull up bar, pullup bar, chin up bar]
+  "Medicine Ball": [med ball, medicine ball, medball]
+  "Stability Ball": [swiss ball, stability ball, exercise ball]
+  "Lacrosse Ball": [lacrosse ball, massage ball]
+  "Jump Rope": [jump rope, skipping rope]
+  Rack: [rack, squat rack, power rack]
+  Plate: [plate, plates, weight plate]
+  Box: [box, plyo box, step box]
+  BOSU: [bosu, bosu ball]
+  Sandbag: [sandbag, sand bag]
+  "EZ Bar": [ez bar, ez-bar, curl bar]
+  "Suspension Trainer": [trx, suspension trainer]
+  "Slant Board": [slant board, wedge board]
+  "Seated Lat Pulldown Machine": [lat pulldown machine, pulldown machine]
+  "Cable Resistance Machine": [cable machine, cables]
+  "Chest Supported Row Machine": [chest supported row machine, row machine]
+  "Horizontal Leg Press Machine": [leg press, leg press machine]
+  "Preacher Curl Bench": [preacher bench, preacher curl bench]
+  "Handle Attachment": [handle, handle attachment]
+  SkiErg: [skierg, ski erg]
+  "Stair Climber": [stair climber, stairmaster]
+  Wall: [wall]
+
+# Movement-pattern families. This is how "exclude deadlifts" works at all:
+# the catalog contains ZERO exercises whose name contains "deadlift", so a
+# naive string match finds nothing. The hinge/hip-lift family is the correct
+# canonical target, and the graph resolves it.
+movement_families:
+  hinge:
+    label: Hip Hinge / Deadlift Family
+    aliases:
+      - deadlift
+      - deadlifts
+      - dead lift
+      - rdl
+      - romanian deadlift
+      - hinge
+      - hip hinge
+      - good morning
+      - hamstring walkout
+    patterns:
+      - "lower pull - hip lift"
+    note: >
+      The supplied catalog has no exercise named "deadlift". The deadlift family
+      is represented by the `lower pull - hip lift` movement pattern, which is
+      what an exclusion must target. This is the clearest demonstration in the
+      project that the graph - not string matching - carries the semantics.
+
+  squat:
+    label: Squat Family
+    aliases: [squat, squats, squatting, goblet squat, back squat, front squat]
+    patterns:
+      - "lower push - squat"
+      - "lower push - split squat"
+
+  lunge:
+    label: Lunge Family
+    aliases: [lunge, lunges, split squat, step-up, step up]
+    patterns:
+      - "lower push - lunge"
+      - "lower push - split squat"
+      - "lower push - step-up"
+
+  plyometric:
+    label: Plyometric / Jumping Family
+    aliases: [plyo, plyometric, plyometrics, jumping, jumps, jump training, high impact]
+    patterns:
+      - "cardio - plyometric"
+
+  push:
+    label: Push Family
+    aliases: [push, pushing, press, pressing, chest work, pecs, pec work]
+    patterns:
+      - "upper push - horizontal"
+      - "upper push - vertical"
+
+  pull:
+    label: Pull Family
+    aliases: [pull, pulling, row, rows, back work, lat work]
+    patterns:
+      - "upper pull - horizontal"
+      - "upper pull - vertical"
+
+  core:
+    label: Core Family
+    aliases: [core, abs, midsection, trunk, anti-rotation]
+    patterns:
+      - "core - anti-extension"
+      - "core - anti-lateral flexion"
+      - "core - anti-rotation"
+      - "core - carry"
+      - "core - extension"
+      - "core - flexion"
+      - "core - rotation"
+
+  mobility:
+    label: Mobility / Regeneration Family
+    aliases: [mobility, stretching, stretch, warmup, warm up, cooldown, cool down, recovery, regen]
+    patterns:
+      - "mobility - dynamic"
+      - "mobility - static"
+      - regen
+      - yoga
+      - massage
+
+  cardio:
+    label: Cardio Family
+    aliases: [cardio, conditioning, aerobic, metcon]
+    patterns:
+      - cardio
+      - "cardio - locomotion"
+
+# Focus keywords -> the muscle/anatomy targets a coach means by "lower body".
+focus_targets:
+  lower_body:
+    label: Lower Body
+    aliases: [lower body, lower-body, legs, leg day, lower]
+    muscle_groups: [quads, glutes, hamstrings, calves, hip adductors, hip flexors]
+    joints: [hip, knee, ankle]
+  upper_body:
+    label: Upper Body
+    aliases: [upper body, upper-body, upper]
+    muscle_groups: [chest, lats, deltoids, triceps, biceps, traps, upper back, middle back, rotator cuff, forearms]
+    joints: [shoulder, elbow, wrist]
+  full_body:
+    label: Full Body
+    aliases: [full body, full-body, total body, whole body]
+    muscle_groups: []
+    joints: []
+  core:
+    label: Core
+    aliases: [core, abs, obliques, midsection]
+    muscle_groups: [core, obliques, lower back]
+    joints: [lumbar spine, thoracic spine]
+  push:
+    label: Push
+    aliases: [push, pecs, chest, pressing]
+    muscle_groups: [chest, deltoids, triceps]
+    joints: [shoulder, elbow]
+  pull:
+    label: Pull
+    aliases: [pull, back, lats, pulling]
+    muscle_groups: [lats, upper back, middle back, biceps, traps]
+    joints: [shoulder, elbow]
+
+# Muscle-group grounding. Kept deliberately thin: these are product taxonomy
+# labels, and only a few carry a defensible external mapping.
+muscle_notes:
+  quads:
+    label: Quadriceps
+    ontology:
+      source: SNOMED_CT
+      code: "122470009"
+      term: Quadriceps femoris muscle structure
+      predicate: skos:closeMatch
+      status: verified
+  glutes:
+    label: Gluteal Muscles
+    ontology:
+      source: SNOMED_CT
+      code: "68861009"
+      term: Gluteal muscle structure
+      predicate: skos:closeMatch
+      status: verified
+  hamstrings:
+    label: Hamstrings
+    ontology:
+      source: SNOMED_CT
+      code: "81022004"
+      term: Hamstring muscle structure
+      predicate: skos:closeMatch
+      status: verified
