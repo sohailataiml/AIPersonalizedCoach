@@ -28,6 +28,8 @@ from app.domain.graph_trace import (
 )
 from app.domain.resolution import ResolvedConcept
 from app.domain.safety import GraphPath, SafetyDecision, SafetyReason
+from app.ontology.grounding import to_concept_grounding
+from app.ontology.loader import Ontology
 
 # Which constraint family each safety rule belongs to. Mirrors RuleId exactly;
 # an unmapped rule falls back to "data_gap" rather than being silently dropped.
@@ -65,7 +67,14 @@ def build_graph_reasoning(
     resolved_concepts: list[ResolvedConcept],
     member_facts: list[str],
     in_plan_count: int,
+    ontology: Ontology | None = None,
 ) -> GraphReasoning:
+    """Project safety decisions into the UI's graph-reasoning payload.
+
+    ``ontology`` is optional purely so this stays a pure projection: it is read
+    only to attach the published-ontology grounding a concept already has. It
+    contributes no reasoning and cannot change a decision.
+    """
     traversals: list[GraphTraversal] = []
 
     for decision in decisions.values():
@@ -84,7 +93,7 @@ def build_graph_reasoning(
         trace_id=trace_id,
         graph_backend=graph_backend,
         summary=_summarize(decisions, candidates, resolved_concepts, traversals, in_plan_count),
-        prompt_concepts=[_prompt_concept(c) for c in resolved_concepts],
+        prompt_concepts=[_prompt_concept(c, ontology) for c in resolved_concepts],
         traversals=traversals,
         member_facts=list(member_facts),
     )
@@ -201,7 +210,17 @@ def _summarize(
     )
 
 
-def _prompt_concept(concept: ResolvedConcept) -> PromptConcept:
+def _prompt_concept(concept: ResolvedConcept, ontology: Ontology | None) -> PromptConcept:
+    """Restate one resolver result, with its ontology grounding if it has one.
+
+    Grounding is attached only for a *resolved* concept: an unresolved phrase
+    has no canonical id, so there is nothing to ground, and showing a mapping
+    next to it would imply the phrase was understood when it was not.
+    """
+    grounding = None
+    if ontology is not None and concept.is_resolved and concept.canonical_id:
+        grounding = to_concept_grounding(ontology.grounding_for(concept.canonical_id))
+
     return PromptConcept(
         source_text=concept.source_text,
         canonical_id=concept.canonical_id,
@@ -210,4 +229,5 @@ def _prompt_concept(concept: ResolvedConcept) -> PromptConcept:
         method=concept.method,
         confidence=concept.confidence,
         resolved=concept.is_resolved,
+        grounding=grounding,
     )

@@ -22,6 +22,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.domain.ontology import ConceptGrounding
 from app.domain.safety import EdgeDirection, NodeKind, SafetyStatus
 
 ConstraintType = Literal[
@@ -82,6 +83,10 @@ class PromptConcept(BaseModel):
     method: str
     confidence: float
     resolved: bool
+    # Optional and additive. Present only where the local concept carries a
+    # verified published mapping; equipment and movement families legitimately
+    # have none, and the UI renders nothing rather than an empty mapping.
+    grounding: ConceptGrounding | None = None
 
 
 class RuleCategoryCount(BaseModel):

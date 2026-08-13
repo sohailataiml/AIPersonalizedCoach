@@ -48,6 +48,19 @@ CONTRAINDICATES = "CONTRAINDICATES"
 BILATERAL_PAIR = "BILATERAL_PAIR"
 SKOS_EXACT_MATCH = "SKOS_EXACT_MATCH"
 SKOS_CLOSE_MATCH = "SKOS_CLOSE_MATCH"
+SKOS_BROAD_MATCH = "SKOS_BROAD_MATCH"
+
+SKOS_RELATION_BY_PREDICATE = {
+    "skos:exactMatch": SKOS_EXACT_MATCH,
+    "skos:closeMatch": SKOS_CLOSE_MATCH,
+    "skos:broadMatch": SKOS_BROAD_MATCH,
+}
+"""Mapping predicate -> relationship type.
+
+Kept as an explicit table rather than a string transform so an unrecognised
+predicate fails to find an edge type instead of silently minting a new
+relationship the rest of the system does not know about.
+"""
 
 HAS_GOAL = "HAS_GOAL"
 HAS_PREFERENCE = "HAS_PREFERENCE"

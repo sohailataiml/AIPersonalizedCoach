@@ -13,6 +13,7 @@ import {
 import { CONCEPT_METHOD_STYLE, conceptLabel } from '@/lib/presentation';
 import type { GenerateWorkoutResponse, GraphTraversal } from '@/lib/types';
 import { LlmBoundary } from './LlmBoundary';
+import { GroundingDetail } from './OntologyGrounding';
 import { CONSTRAINT_LABEL, CONSTRAINT_TONE, TraversalPath } from './TraversalPath';
 import { TraversalReplay } from './TraversalReplay';
 
@@ -209,7 +210,9 @@ function ConceptsTab({
       <p className="mb-3 text-2xs text-ink-500">
         The coach&apos;s wording, canonicalised onto graph concepts before any
         traversal ran. Nothing below this step is guessed — an unresolved phrase
-        is reported, never forced onto a concept.
+        is reported, never forced onto a concept. Where a concept also carries a
+        verified published mapping, it is shown; the local ID stays the one this
+        system reasons on.
       </p>
 
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -261,6 +264,12 @@ function ConceptsTab({
                   <div className="font-mono text-[9.5px] text-ink-400">
                     {conceptLabel(concept.canonical_id)}
                   </div>
+                  {/* Rendered only where a verified published mapping exists.
+                      Equipment and movement families have none, and showing
+                      nothing is the honest state for them. */}
+                  {concept.grounding ? (
+                    <GroundingDetail grounding={concept.grounding} />
+                  ) : null}
                 </div>
               ) : (
                 <div className="text-2xs font-medium text-danger-700">

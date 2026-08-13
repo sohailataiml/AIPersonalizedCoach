@@ -216,6 +216,7 @@ class WorkoutWorkflow:
             resolved_concepts=state["resolved_concepts"],
             member_facts=bundle.member_facts,
             in_plan_count=bundle.counts.get("in_plan", 0),
+            ontology=self._ontology,
         )
 
         return {

@@ -952,7 +952,20 @@ const raw = {
           "concept_type": "anatomy",
           "method": "alias",
           "confidence": 0.98,
-          "resolved": true
+          "resolved": true,
+          "grounding": {
+            "local_id": "anatomy:knee",
+            "label": "Knee",
+            "ontology_source": "SNOMED_CT",
+            "ontology_code": "72696002",
+            "ontology_term": "Knee region structure",
+            "ontology_uri": "http://snomed.info/id/72696002",
+            "browser_url": "https://evsexplore.semantics.cancer.gov/evsexplore/concept/snomedct_us/72696002",
+            "mapping_relation": "exactMatch",
+            "mapping_evidence": "NCI EVS snomedct_us 2025_09_01: concept 72696002 active, preferred term \"Knee region structure\", synonym \"Knee\".",
+            "mapping_version": "2025_09_01",
+            "status": "verified"
+          }
         },
         {
           "source_text": "dumbbells",
@@ -961,7 +974,8 @@ const raw = {
           "concept_type": "equipment",
           "method": "alias",
           "confidence": 0.98,
-          "resolved": true
+          "resolved": true,
+          "grounding": null
         },
         {
           "source_text": "kettlebell",

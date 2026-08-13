@@ -10,14 +10,15 @@ PY ?= python
 BACKEND := backend
 FRONTEND := frontend
 
-.PHONY: help setup dev dev-backend dev-frontend seed test lint typecheck build verify docker clean
+.PHONY: help setup dev dev-backend dev-frontend seed test test-frontend lint typecheck build verify verify-ontology docker clean
 
 help:
 	@echo "make setup   - install dependencies (backend + frontend)"
 	@echo "make dev     - run backend :8000 and frontend :3000"
 	@echo "make seed    - seed/verify the knowledge graph from a clean state"
 	@echo "make test    - backend tests"
-	@echo "make verify  - tests + lint + typecheck + build + demo scenarios"
+	@echo "make verify  - tests + lint + typecheck + build + ontology audit + demo scenarios"
+	@echo "make verify-ontology - re-resolve every SNOMED code at NCI EVS (network)"
 	@echo "make docker  - full stack incl. Neo4j via docker compose"
 
 setup:
@@ -44,6 +45,15 @@ seed:
 test:
 	cd $(BACKEND) && $(PY) -m pytest -q
 
+test-frontend:
+	cd $(FRONTEND) && npm test
+
+# Re-resolves every SNOMED CT code against the NCI EVS terminology server.
+# Kept out of `verify` on purpose: it needs the network, and a transport
+# failure is not a mapping failure.
+verify-ontology:
+	$(PY) scripts/verify_ontology.py --live
+
 lint:
 	cd $(BACKEND) && $(PY) -m ruff check app tests
 	cd $(FRONTEND) && npm run lint
@@ -56,6 +66,7 @@ build:
 
 verify: test lint typecheck build
 	$(PY) scripts/seed_graph.py --dry-run
+	$(PY) scripts/verify_ontology.py
 	$(PY) scripts/demo_scenarios.py
 
 docker:

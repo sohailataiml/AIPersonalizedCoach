@@ -12,6 +12,7 @@ from app.copilot.mcp_narrator import SafetyEvidence
 from app.copilot.service import ChartPayload, Citation, CopilotIntent, Grounding
 from app.domain.graph_trace import GraphReasoning
 from app.domain.member import Goal, Injury, MemberSummary
+from app.domain.ontology import ConceptGrounding
 from app.domain.resolution import ResolvedConcept
 from app.domain.workout import GeneratedWorkout, PostValidationReport
 from app.provenance.builder import ProvenanceItem
@@ -103,6 +104,11 @@ class ExerciseProvenanceResponse(BaseModel):
     families: list[str] = Field(default_factory=list)
     is_unilateral: bool = False
     side: str | None = None
+    # The published-ontology grounding for the anatomy and muscles this
+    # exercise touches. Additive and often partial: movement patterns and
+    # equipment carry no external identifier, and that is stated rather than
+    # papered over.
+    grounding: list[ConceptGrounding] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

@@ -655,6 +655,7 @@ def evaluate_workout_request(
         resolved_concepts=resolved,
         member_facts=bundle.member_facts,
         in_plan_count=0,  # nothing is composed by this tool, by design
+        ontology=services.ontology,
     )
 
     eligible: list[CandidateView] = []

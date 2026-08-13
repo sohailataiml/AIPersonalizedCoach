@@ -131,6 +131,7 @@ API key in `.env`. Nothing about safety changes when you do — that is the poin
 | `make dev` | Run backend and frontend together |
 | `make seed` | Seed + verify the graph from a clean state |
 | `make test` | Backend test suite |
+| `make verify-ontology` | Re-resolve every SNOMED code against NCI EVS (needs network) |
 | `make verify` | Tests, lint, typecheck, production build, demo scenarios |
 
 ---
@@ -239,8 +240,8 @@ concepts.
 | `MovementFamily` (9) | `IN_FAMILY` (pattern → family) |
 | `Equipment` (32) | `PART_OF` (anatomy hierarchy) |
 | `InjuryCondition` (3) | `AFFECTS` (condition → region) |
-| `OntologyConcept` (11) | `CONTRAINDICATES` (condition → pattern) |
-| | `SKOS_EXACT_MATCH` / `SKOS_CLOSE_MATCH` |
+| `OntologyConcept` (29) | `CONTRAINDICATES` (condition → pattern) |
+| | `SKOS_EXACT_MATCH` / `SKOS_CLOSE_MATCH` / `SKOS_BROAD_MATCH` |
 
 The 14 anatomical regions are the 9 catalog joints plus a deliberately small
 curated hierarchy that gives the injury reasoning somewhere to walk:
@@ -276,35 +277,114 @@ Member -HAS_EQUIPMENT→ Equipment   (the same Equipment nodes KG1 uses)
 
 The brief asks for reasoning about *what to pull and what to leave out*. The
 stance taken here: **a small, semantically correct subset used meaningfully beats
-a wide shallow integration.**
+a wide shallow integration** — and every identifier in it has to be re-checkable
+by someone who does not trust me.
 
-**What was used**
+### The architecture: mapping, not replacement
 
-| Ontology | Used for | Extent |
+```
+Published clinical ontology  (SNOMED CT — clinical identity, for interchange)
+        │ skos:exactMatch / closeMatch / broadMatch
+        ▼
+Local Future fitness ontology  (anatomy, exercises, patterns, equipment)
+        ▼
+Deterministic SafetyEngine
+```
+
+SNOMED standardises *clinical identity*. It does not become the vocabulary. The
+Future ontology still owns exercises, movement patterns and families, equipment,
+`STRESSES` relationships, and the fitness-specific contraindication semantics —
+because SNOMED has no concept for "lower push - split squat", and the safety
+engine reasons entirely on the local terms. **No safety rule reads an ontology
+code**, and a test asserts that stripping every mapping leaves all 50 decisions
+byte-identical.
+
+### What is mapped
+
+**29 concepts**, all SNOMED CT, all resolved against the NCI EVS REST API the
+brief itself names:
+
+| Group | Mapped | Example |
 |---|---|---|
-| **SNOMED CT** | Anatomy and clinical conditions | 8 concepts with codes, as explicit `OntologyConcept` nodes with SKOS mapping edges |
-| **SKOS** | Mapping predicates | `skos:exactMatch` where the local concept denotes the same thing, `skos:closeMatch` where ours is a coarser product-level grouping |
-| **PROV-O** | Provenance semantics | Applied conceptually — each decision records what was generated, the activity that produced it (`knowledge_graph` / `llm_composition` / `post_validation`), and what it derived from (the traversed paths). No RDF stack. |
-| **OPE / COPPER** | Reviewed, not ingested | See below |
+| Anatomy | 14 / 14 | `anatomy:knee` → `72696002` *Knee region structure* · `exactMatch` |
+| Clinical conditions | 3 / 3 | `injury:patellofemoral_pain_syndrome` → `430725003` · `exactMatch` |
+| Muscle groups | 12 / 19 | `muscle:hamstrings` → `128511007` *Posterior muscle of thigh structure* · `exactMatch` |
 
-**What was deliberately left out, and why**
+Predicate choice is semantic, not decorative:
 
-- **Full OWL ingestion of any ontology.** Thousands of unused concepts would add
-  no reasoning capability to a 50-exercise catalog and would obscure the parts
-  doing real work.
-- **OPE and COPPER as data.** They informed how exercises, equipment and
-  personalisation concepts are modelled, but the catalog's own taxonomy is already
-  the operative vocabulary. Mapping 50 exercises to OPE identifiers I could not
-  verify would be decoration.
+- `skos:exactMatch` (22) — the local concept and the published concept denote the
+  same thing, confirmed against the concept's preferred term or a synonym.
+- `skos:closeMatch` (6) — ours is a coarser product grouping. `muscle:glutes` is
+  maximus + medius + minimus; SNOMED models each separately, so it maps close to
+  gluteus maximus rather than pretending to be it.
+- `skos:broadMatch` (1) — the published concept is *broader* than ours.
+  `anatomy:tibiofemoral_joint` maps broad to *Knee joint structure*, because
+  SNOMED has no distinct tibiofemoral structure and the one it has subsumes the
+  patellofemoral compartment too.
 
-**On not inventing identifiers.** Every SNOMED code in
-[`backend/app/ontology/mappings.yaml`](backend/app/ontology/mappings.yaml) is
-marked `status: verified` or carries no code at all. The patellofemoral *joint
-structure* concept is a case in point: the local canonical concept is retained,
-`status: unverified` is recorded, and **no code is fabricated**. Production would
-resolve these against a licensed terminology server (NCI EVS). Unverified
-mappings stay as node properties and never become `OntologyConcept` nodes, so the
-graph never asserts an external identity it cannot support.
+Each mapping carries `code`, `uri`, `predicate`, `version` and an **evidence
+string** stating exactly how it was resolved. In the graph they become
+`OntologyConcept` nodes reached by `SKOS_EXACT_MATCH` / `SKOS_CLOSE_MATCH` /
+`SKOS_BROAD_MATCH` edges, and the same metadata is mirrored onto the domain node
+so the grounding is visible without following an edge. One graph store, no
+second index.
+
+### What is deliberately not mapped, and why
+
+Recorded as a first-class `unmapped` register in the YAML — not as absence:
+
+| Concept group | Intended source | Why not |
+|---|---|---|
+| 32 equipment types | OPE | OPE is distributed only through BioPortal, whose REST API returns **HTTP 401** without an account key. OLS4 does not host it (**404**). No identifier was resolvable, so none was recorded. |
+| 36 movement patterns / 9 families | OPE | Same blocker. This is the vocabulary the safety engine actually traverses, and it is fully specified locally regardless. |
+| Personalisation concepts | COPPER | Same API-key blocker, and what this system personalises on today (adherence %, sleep hours, injury status) are numeric observations, not behaviour-change constructs. A mapping would be decorative even if reachable. |
+| 7 of 19 muscle groups | SNOMED CT | `core`, `obliques`, `upper back`, `middle back`, `lower back`, `hip flexors`, `forearms` are regional training groupings with no single SNOMED body structure. |
+| Full OWL ingestion | — | Thousands of unused concepts add no reasoning capability to a 50-exercise catalog and would obscure the parts doing real work. |
+
+Unmapping is enforced, not just documented: a test asserts no grounding ever
+carries source `OPE` or `COPPER`, and that an entry in the `unmapped` register
+can never acquire a code.
+
+### On not inventing identifiers
+
+This is the part worth reading carefully, because the previous revision of this
+file got it wrong while claiming otherwise.
+
+It shipped eleven SNOMED codes, **all marked `status: verified`**, alongside a
+README paragraph asserting no code was fabricated. Re-resolving each one against
+NCI EVS showed **five did not survive**:
+
+| Code | Claimed to be | Actually resolves to |
+|---|---|---|
+| `202383002` | Patellofemoral pain syndrome | **nothing** — HTTP 404 |
+| `30989003` | Arthralgia of knee | **nothing** — HTTP 404 |
+| `122470009` | Quadriceps femoris muscle | **nothing** — HTTP 404 |
+| `68861009` | Gluteal muscle structure | ***Hexamita*** — a genus of protozoa |
+| `81022004` | Hamstring muscle structure | ***Vicia angustifolia*** — a vetch plant |
+
+All five are corrected. The lesson is not "check your codes" — it is that a
+claim nobody re-runs decays into fiction, and a *fabricated* identifier is worse
+than a missing one, because it looks authoritative inside a provenance trace
+shown to a coach.
+
+So verification is now executable:
+
+```bash
+python scripts/verify_ontology.py          # offline structural audit
+python scripts/verify_ontology.py --live   # re-resolve all 29 codes at NCI EVS
+```
+
+The live pass fetches every code, rejects anything absent or inactive, and
+rejects any code whose recorded term is not the concept's preferred term or one
+of its synonyms — which is precisely the check that catches *Hexamita*. Current
+result: **29 ok, 0 warnings, 0 failures**. It is opt-in so the test suite never
+depends on the network.
+
+The full mapping set is served at `GET /api/ontology/grounding`, mapped and
+unmapped halves together, and the UI shows a grounded concept as one quiet line
+(*SNOMED CT · exactMatch*) with codes, URIs and evidence behind a collapsed
+disclosure. A coach never has to read a SNOMED code; a reviewer can audit every
+one.
 
 ---
 
@@ -666,17 +746,26 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**114 tests, all passing**, deliberately concentrated on the paths where a bug
-produces a *confidently wrong* answer rather than a visible failure.
+**271 backend tests and 92 frontend tests, all passing**, deliberately
+concentrated on the paths where a bug produces a *confidently wrong* answer
+rather than a visible failure.
 
 ```
-tests/test_resolver.py          43   normalization, exact/alias, fuzzy typos,
-                                     embedding fallback, thresholds, unresolved
-tests/test_safety.py            36   anatomy closure, contraindications, equipment,
-                                     exclusions, preferences-never-override-safety
-tests/test_post_validation.py   13   the safety gate, incl. adversarial end-to-end
-tests/test_copilot.py           22   grounding, missing data, chart correctness
+backend/tests/test_resolver.py         normalization, exact/alias, fuzzy typos,
+                                       embedding fallback, thresholds, unresolved
+backend/tests/test_safety.py           anatomy closure, contraindications, equipment,
+                                       exclusions, preferences-never-override-safety
+backend/tests/test_post_validation.py  the safety gate, incl. adversarial end-to-end
+backend/tests/test_graph_trace.py      trace fidelity - no invented relationships
+backend/tests/test_ontology.py    37   ontology grounding: local ids stay
+                                       authoritative, safety is unchanged, no
+                                       fabricated identifiers
+backend/tests/test_copilot*.py         grounding, missing data, chart correctness
+backend/tests/test_mcp_tools.py        MCP parity with a direct engine call
+frontend/tests/                   92   graph reasoning, replay, ontology grounding
 ```
+
+Run them with `make test` (backend) and `npm test` in `frontend/`.
 
 Everything runs against the in-memory graph — no Docker, database, network or API
 key — so the highest-risk module is testable on every commit.
@@ -810,8 +899,16 @@ This is an assessment prototype, not a production system. Specifically:
 - **The clinical policy is mine, not a clinician's.** The contraindication sets
   and severity thresholds are reasonable readings of the member's own notes, and
   would need clinical review before anyone trained on them.
-- **Ontology grounding is partial.** 8 verified SNOMED concepts; OPE and COPPER
-  informed the modelling but are not ingested.
+- **Ontology grounding is curated, not exhaustive.** 29 SNOMED CT concepts,
+  each verified against NCI EVS and re-checkable with
+  `python scripts/verify_ontology.py --live`. OPE and COPPER are **not**
+  mapped — BioPortal's API requires an account key, so no identifier from
+  either could be verified, and none was invented. Equipment, movement patterns
+  and 7 of 19 muscle groups therefore stay local-only by design; the
+  `unmapped` register in `mappings.yaml` records each decision and its reason.
+- **Verification is a point-in-time claim.** The codes were resolved against
+  SNOMED CT US edition `2025_09_01`. A later release can retire or restructure
+  a concept, which is exactly why the audit is a script rather than a sentence.
 - **Duration budgeting is approximate.** Section sizes scale with duration but the
   system does not solve a true time budget from `estimated_rep_duration`.
 - **The embedding pass is lexical.** It catches morphological variants, not

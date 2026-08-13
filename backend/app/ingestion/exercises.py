@@ -21,7 +21,7 @@ from pathlib import Path
 from app.domain.exercise import Exercise
 from app.graph import model as m
 from app.graph.model import KnowledgeGraph
-from app.ontology.loader import Ontology
+from app.ontology.loader import Ontology, OntologyGrounding
 
 
 def load_exercises(path: Path) -> list[Exercise]:
@@ -69,20 +69,9 @@ def _ingest_anatomy(graph: KnowledgeGraph, ontology: Ontology) -> None:
             id=concept.id,
             name=concept.label,
             aliases=list(concept.aliases),
-            ontology_source=concept.ontology_source,
-            ontology_code=concept.ontology_code,
-            ontology_term=concept.ontology_term,
-            ontology_status=concept.ontology_status,
+            **_grounding_properties(concept.grounding),
         )
-        _link_ontology(
-            graph,
-            key,
-            concept.ontology_source,
-            concept.ontology_code,
-            concept.ontology_term,
-            concept.mapping_predicate,
-            concept.ontology_status,
-        )
+        _link_ontology(graph, key, concept.grounding)
 
     # PART_OF is the hierarchy that makes injury reasoning work.
     for concept in ontology.anatomy.values():
@@ -101,22 +90,11 @@ def _ingest_injury_conditions(graph: KnowledgeGraph, ontology: Ontology) -> None
             id=condition.id,
             name=condition.label,
             aliases=list(condition.aliases),
-            ontology_source=condition.ontology_source,
-            ontology_code=condition.ontology_code,
-            ontology_term=condition.ontology_term,
-            ontology_status=condition.ontology_status,
             contraindication_note=condition.contraindication_note,
+            **_grounding_properties(condition.grounding),
         )
         graph.add_edge(key, m.AFFECTS, m.anatomy_key(condition.affects))
-        _link_ontology(
-            graph,
-            key,
-            condition.ontology_source,
-            condition.ontology_code,
-            condition.ontology_term,
-            condition.mapping_predicate,
-            condition.ontology_status,
-        )
+        _link_ontology(graph, key, condition.grounding)
 
 
 def _ingest_movement_families(graph: KnowledgeGraph, ontology: Ontology) -> None:
@@ -169,20 +147,17 @@ def _ingest_exercise(graph: KnowledgeGraph, exercise: Exercise, ontology: Ontolo
 
     for muscle in exercise.muscle_groups:
         mkey = m.muscle_key(muscle)
-        node_props = {"id": m.slug(muscle), "name": muscle}
-        note = ontology.muscle_notes.get(muscle, {})
-        ont = note.get("ontology") or {}
-        graph.add_node(mkey, m.MUSCLE, **node_props)
-        graph.add_edge(key, m.TARGETS, mkey)
-        _link_ontology(
-            graph,
+        concept = ontology.muscles.get(muscle)
+        grounding = concept.grounding if concept else None
+        graph.add_node(
             mkey,
-            ont.get("source"),
-            ont.get("code"),
-            ont.get("term"),
-            ont.get("predicate"),
-            ont.get("status"),
+            m.MUSCLE,
+            id=m.slug(muscle),
+            name=muscle,
+            **_grounding_properties(grounding),
         )
+        graph.add_edge(key, m.TARGETS, mkey)
+        _link_ontology(graph, mkey, grounding)
 
     for joint in exercise.joints_loaded:
         concept = ontology.anatomy_by_catalog_joint(joint)
@@ -211,31 +186,62 @@ def _ingest_exercise(graph: KnowledgeGraph, exercise: Exercise, ontology: Ontolo
         graph.add_edge(key, m.REQUIRES, ekey)
 
 
+def _grounding_properties(grounding: OntologyGrounding | None) -> dict:
+    """Ontology metadata carried on the *local* node.
+
+    Present on the domain node as well as on the ``OntologyConcept`` node so a
+    reader browsing the graph can see the grounding without following an edge.
+    An ungrounded concept contributes nothing rather than a row of nulls.
+    """
+    if grounding is None or not grounding.is_grounded:
+        return {}
+    return {
+        "ontology_source": grounding.source,
+        "ontology_code": grounding.code,
+        "ontology_term": grounding.term,
+        "ontology_uri": grounding.uri,
+        "ontology_status": grounding.status,
+        "mapping_predicate": grounding.predicate,
+        "mapping_version": grounding.version,
+    }
+
+
 def _link_ontology(
     graph: KnowledgeGraph,
     subject_key: str,
-    source: str | None,
-    code: str | None,
-    term: str | None,
-    predicate: str | None,
-    status: str | None,
+    grounding: OntologyGrounding | None,
 ) -> None:
     """Create an explicit OntologyConcept node + SKOS mapping edge.
 
-    Only when we actually have a code. Unverified mappings stay as node
-    properties rather than becoming fake external concepts.
+    Only for a grounding that carries a real source, code *and* predicate. A
+    concept reviewed and left ungrounded keeps its local id and produces no
+    node and no edge, so the graph never asserts an external identity it cannot
+    support - which is the whole point of the unmapped register.
     """
-    if not source or not code:
+    if grounding is None or not grounding.is_grounded:
         return
-    okey = m.ontology_key(source, code)
+
+    assert grounding.source and grounding.code and grounding.predicate
+    okey = m.ontology_key(grounding.source, grounding.code)
     graph.add_node(
         okey,
         m.ONTOLOGY_CONCEPT,
-        id=f"{source}:{code}",
-        name=term or code,
-        source=source,
-        code=code,
-        status=status,
+        id=f"{grounding.source}:{grounding.code}",
+        name=grounding.term or grounding.code,
+        source=grounding.source,
+        code=grounding.code,
+        uri=grounding.uri,
+        status=grounding.status,
+        version=grounding.version,
+        evidence=grounding.evidence,
     )
-    rel = m.SKOS_CLOSE_MATCH if predicate == "skos:closeMatch" else m.SKOS_EXACT_MATCH
-    graph.add_edge(subject_key, rel, okey, predicate=predicate)
+    rel = m.SKOS_RELATION_BY_PREDICATE.get(grounding.predicate)
+    if rel is None:  # pragma: no cover - _predicate() already filters these out
+        return
+    graph.add_edge(
+        subject_key,
+        rel,
+        okey,
+        predicate=grounding.predicate,
+        mapping_version=grounding.version,
+    )

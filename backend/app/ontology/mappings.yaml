@@ -3,20 +3,73 @@
 # DESIGN STANCE (see README "Ontology decisions"):
 #   * We do NOT ingest OPE / SNOMED CT / COPPER wholesale. We curate a small
 #     subset that is actually exercised by the supplied catalog and member.
-#   * Every `ontology.code` below is either a SNOMED CT concept id we are
-#     confident about, or omitted entirely. Where we could not verify an
-#     identifier we keep the local canonical concept and set
-#     `ontology.status: unverified` rather than inventing a code. The README
-#     states plainly that production would complete this normalization against
-#     a licensed terminology server (NCI EVS).
-#   * `mapping_predicate` uses SKOS semantics: exactMatch when the local concept
-#     and the external concept denote the same thing, closeMatch when the local
-#     concept is a coarser product-level grouping.
+#   * Every `ontology.code` below has been resolved against the NCI EVS REST
+#     API (the terminology server the assessment brief itself names) and carries
+#     the evidence string proving it. A concept that cannot be resolved keeps
+#     its local canonical id and is listed under `unmapped` with the reason -
+#     it never gets an invented identifier.
+#   * `predicate` uses SKOS semantics:
+#       skos:exactMatch - the local concept and the external concept denote the
+#                         same thing (EVS preferred term or synonym matches);
+#       skos:closeMatch - the local concept is a coarser product-level grouping
+#                         that overlaps the external concept but is not identical;
+#       skos:broadMatch - the external concept is *broader* than ours, i.e. our
+#                         concept is a narrower part of it.
 #
 # The anatomy hierarchy below is the part that does real work: the catalog
 # annotates exercises only at `knee` granularity, while the member's injury is
 # *patellofemoral* pain. PART_OF lets an injury recorded at a sub-structure
 # reach every exercise annotated at the joint above it.
+#
+# ---------------------------------------------------------------------------
+# AUDIT NOTE (2026-08-12)
+#
+# An earlier revision of this file carried eleven SNOMED CT codes, all marked
+# `status: verified`. Re-resolving each one against NCI EVS showed five of them
+# were not verifiable:
+#
+#   202383002  claimed "Patellofemoral pain syndrome"     -> 404, no such concept
+#   30989003   claimed "Arthralgia of knee"               -> 404, no such concept
+#   122470009  claimed "Quadriceps femoris muscle"        -> 404, no such concept
+#   68861009   claimed "Gluteal muscle structure"         -> Hexamita (a protozoan)
+#   81022004   claimed "Hamstring muscle structure"       -> Vicia angustifolia (a plant)
+#
+# All five are corrected below and every remaining code carries a machine
+# re-checkable evidence string. `python scripts/verify_ontology.py` re-runs the
+# whole audit against the live terminology server.
+# ---------------------------------------------------------------------------
+
+# Provenance for the mapping set itself. `uri_template` is what turns a bare
+# code into a dereferenceable identifier, so nothing downstream has to hardcode
+# a URL shape.
+mapping_set:
+  version: "1.1.0"
+  verified_on: "2026-08-12"
+  method: >
+    Each code was resolved with GET https://api-evsrest.nci.nih.gov/api/v1/concept/
+    snomedct_us/<code> and accepted only if the concept exists, is active, and
+    its preferred term or one of its synonyms denotes the local concept.
+
+ontology_sources:
+  SNOMED_CT:
+    label: SNOMED CT (US edition)
+    terminology: snomedct_us
+    version: "2025_09_01"
+    uri_template: "http://snomed.info/id/{code}"
+    browser_template: >-
+      https://evsexplore.semantics.cancer.gov/evsexplore/concept/snomedct_us/{code}
+    api_template: "https://api-evsrest.nci.nih.gov/api/v1/concept/snomedct_us/{code}"
+    used_for: Clinical anatomy, joints and conditions.
+  SKOS:
+    label: Simple Knowledge Organization System
+    uri_template: "http://www.w3.org/2004/02/skos/core#{code}"
+    used_for: The mapping predicates themselves (exactMatch / closeMatch / broadMatch).
+  PROV_O:
+    label: W3C Provenance Ontology
+    uri_template: "http://www.w3.org/ns/prov#{code}"
+    used_for: >-
+      Provenance semantics, applied conceptually - generated entity, generating
+      activity, derivation. No RDF stack.
 
 anatomy:
   knee:
@@ -29,6 +82,10 @@ anatomy:
       term: Knee region structure
       predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 72696002 active, preferred term
+        "Knee region structure", synonym "Knee".
 
   patellofemoral_joint:
     label: Patellofemoral Joint
@@ -36,17 +93,33 @@ anatomy:
     part_of: knee
     ontology:
       source: SNOMED_CT
-      term: Patellofemoral joint structure
+      code: "129160003"
+      term: Structure of patellofemoral joint
       predicate: skos:exactMatch
-      status: unverified
-      note: >
-        Local canonical concept retained. A licensed SNOMED CT lookup would
-        confirm the patellofemoral joint structure code before production use.
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 129160003 active, preferred term
+        "Structure of patellofemoral joint", synonym "Patellofemoral joint".
+        Previously recorded as unverified with no code; now resolved.
 
   tibiofemoral_joint:
     label: Tibiofemoral Joint
     aliases: [tibiofemoral, tibiofemoral joint, main knee joint]
     part_of: knee
+    ontology:
+      source: SNOMED_CT
+      code: "49076000"
+      term: Knee joint structure
+      predicate: skos:broadMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 49076000 active, preferred term
+        "Knee joint structure". broadMatch rather than exactMatch: SNOMED has no
+        distinct tibiofemoral body-structure concept, and the knee joint it does
+        have subsumes the patellofemoral compartment as well, so the external
+        concept is strictly broader than ours.
 
   hip:
     label: Hip
@@ -58,6 +131,10 @@ anatomy:
       term: Hip region structure
       predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 29836001 active, preferred term
+        "Hip region structure".
 
   ankle:
     label: Ankle
@@ -69,10 +146,24 @@ anatomy:
       term: Ankle region structure
       predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 344001 active, preferred term
+        "Ankle region structure".
 
   lower_limb:
     label: Lower Limb
     aliases: [lower limb, leg, legs, lower body]
+    ontology:
+      source: SNOMED_CT
+      code: "61685007"
+      term: Lower limb structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 61685007 active, preferred term
+        "Lower limb structure", synonyms "Leg", "Lower extremity".
 
   shoulder:
     label: Shoulder
@@ -84,20 +175,54 @@ anatomy:
       term: Shoulder region structure
       predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 16982005 active, preferred term
+        "Shoulder region structure".
 
   elbow:
     label: Elbow
     aliases: [elbow, elbows, elbow joint]
     part_of: upper_limb
+    ontology:
+      source: SNOMED_CT
+      code: "127949000"
+      term: Elbow region structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 127949000 active, preferred term
+        "Elbow region structure".
 
   wrist:
     label: Wrist
     aliases: [wrist, wrists, wrist joint]
     part_of: upper_limb
+    ontology:
+      source: SNOMED_CT
+      code: "8205005"
+      term: Wrist region structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 8205005 active, preferred term
+        "Wrist region structure".
 
   upper_limb:
     label: Upper Limb
     aliases: [upper limb, arm, arms, upper body]
+    ontology:
+      source: SNOMED_CT
+      code: "53120007"
+      term: Upper limb structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 53120007 active, preferred term
+        "Upper limb structure", synonyms "Arm", "Upper extremity".
 
   lumbar_spine:
     label: Lumbar Spine
@@ -116,22 +241,58 @@ anatomy:
       source: SNOMED_CT
       code: "122496007"
       term: Lumbar spine structure
-      predicate: skos:closeMatch
+      predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 122496007 active, preferred term
+        "Lumbar spine structure". Upgraded from closeMatch to exactMatch: the
+        local concept denotes the lumbar spine region, which is what this
+        concept denotes.
 
   thoracic_spine:
     label: Thoracic Spine
     aliases: [thoracic spine, mid back, middle back, t-spine, upper back spine]
     part_of: spine
+    ontology:
+      source: SNOMED_CT
+      code: "122495006"
+      term: Thoracic spine structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 122495006 active, preferred term
+        "Thoracic spine structure".
 
   cervical_spine:
     label: Cervical Spine
     aliases: [cervical spine, neck, c-spine]
     part_of: spine
+    ontology:
+      source: SNOMED_CT
+      code: "122494005"
+      term: Structure of cervical vertebral column
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 122494005 active, preferred term
+        "Structure of cervical vertebral column".
 
   spine:
     label: Spine
     aliases: [spine, back, vertebral column]
+    ontology:
+      source: SNOMED_CT
+      code: "421060004"
+      term: Structure of vertebral column
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 421060004 active, preferred term
+        "Structure of vertebral column", synonyms "Spine", "Spinal column".
 
 # Clinical conditions. `affects` points at an anatomy concept; the safety engine
 # then walks PART_OF from there. `contraindicates` names movement-pattern
@@ -151,10 +312,17 @@ injury_conditions:
     affects: patellofemoral_joint
     ontology:
       source: SNOMED_CT
-      code: "202383002"
-      term: Patellofemoral pain syndrome
+      code: "430725003"
+      term: Patellofemoral stress syndrome
       predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 430725003 active, preferred term
+        "Patellofemoral stress syndrome", synonyms "Patellofemoral pain
+        syndrome" and "Patellofemoral syndrome" - the local label is a verbatim
+        synonym, so exactMatch holds. CORRECTION: the previously recorded code
+        202383002 does not resolve in SNOMED CT (HTTP 404).
     contraindicates_patterns:
       - "cardio - plyometric"
       - "lower push - squat"
@@ -172,10 +340,18 @@ injury_conditions:
     affects: knee
     ontology:
       source: SNOMED_CT
-      code: "30989003"
-      term: Arthralgia of knee
+      code: "1003721002"
+      term: Pain of joint of knee
       predicate: skos:closeMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 1003721002 active, preferred
+        term "Pain of joint of knee", synonym "Arthralgia of knee". closeMatch
+        rather than exactMatch: the local concept also absorbs coach phrasings
+        like "knee injury" and "bad knee", which are broader than arthralgia.
+        CORRECTION: the previously recorded code 30989003 does not resolve in
+        SNOMED CT (HTTP 404).
     contraindicates_patterns:
       - "cardio - plyometric"
 
@@ -189,6 +365,10 @@ injury_conditions:
       term: Low back pain
       predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 279039007 active, preferred term
+        "Low back pain".
     contraindicates_patterns:
       - "core - extension"
       - "lower pull - hip lift"
@@ -351,30 +531,228 @@ focus_targets:
     muscle_groups: [lats, upper back, middle back, biceps, traps]
     joints: [shoulder, elbow]
 
-# Muscle-group grounding. Kept deliberately thin: these are product taxonomy
-# labels, and only a few carry a defensible external mapping.
-muscle_notes:
+# Muscle-group grounding.
+#
+# The catalog's 19 muscle groups are product taxonomy labels, not anatomical
+# terms, so they ground unevenly on purpose. 13 of the 19 name a muscle that
+# SNOMED CT models as a single body structure; the remaining 6 are regional
+# groupings with no single external counterpart and are listed under
+# `unmapped` rather than being forced onto an approximate code.
+#
+# Keys must match the catalog's `muscle_groups` values verbatim - that is how
+# ingestion attaches the mapping to the Muscle node.
+muscles:
   quads:
     label: Quadriceps
     ontology:
       source: SNOMED_CT
-      code: "122470009"
-      term: Quadriceps femoris muscle structure
-      predicate: skos:closeMatch
+      code: "21989003"
+      term: Structure of quadriceps femoris muscle
+      predicate: skos:exactMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 21989003 active, preferred term
+        "Structure of quadriceps femoris muscle". CORRECTION: the previously
+        recorded code 122470009 does not resolve in SNOMED CT (HTTP 404).
+
   glutes:
     label: Gluteal Muscles
     ontology:
       source: SNOMED_CT
-      code: "68861009"
-      term: Gluteal muscle structure
+      code: "206007"
+      term: Structure of gluteus maximus muscle
       predicate: skos:closeMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 206007 active, preferred term
+        "Structure of gluteus maximus muscle". closeMatch, not exactMatch: the
+        catalog's "glutes" covers maximus, medius and minimus, while SNOMED
+        models each separately and has no combined gluteal-group structure.
+        CORRECTION: the previously recorded code 68861009 resolves to
+        "Hexamita", a genus of protozoa, and was plainly wrong.
+
   hamstrings:
     label: Hamstrings
     ontology:
       source: SNOMED_CT
-      code: "81022004"
-      term: Hamstring muscle structure
+      code: "128511007"
+      term: Posterior muscle of thigh structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 128511007 active, preferred term
+        "Posterior muscle of thigh structure", synonyms "Hamstring muscle" and
+        "Hamstring muscle structure". CORRECTION: the previously recorded code
+        81022004 resolves to "Vicia angustifolia", a plant species.
+
+  calves:
+    label: Calves
+    ontology:
+      source: SNOMED_CT
+      code: "53451005"
+      term: Triceps surae muscle structure
       predicate: skos:closeMatch
       status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 53451005 active, preferred term
+        "Triceps surae muscle structure". closeMatch: triceps surae is
+        gastrocnemius plus soleus, whereas the catalog's "calves" is also used
+        for exercises loading the deeper plantarflexors.
+
+  chest:
+    label: Chest
+    ontology:
+      source: SNOMED_CT
+      code: "60005003"
+      term: Pectoralis major muscle structure
+      predicate: skos:closeMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 60005003 active, preferred term
+        "Pectoralis major muscle structure". closeMatch: "chest" as a training
+        target includes pectoralis minor and the anterior chest wall.
+
+  lats:
+    label: Latissimus Dorsi
+    ontology:
+      source: SNOMED_CT
+      code: "15665001"
+      term: Structure of latissimus dorsi muscle
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 15665001 active, preferred term
+        "Structure of latissimus dorsi muscle".
+
+  deltoids:
+    label: Deltoids
+    ontology:
+      source: SNOMED_CT
+      code: "35259002"
+      term: Structure of deltoid muscle
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 35259002 active, preferred term
+        "Structure of deltoid muscle".
+
+  triceps:
+    label: Triceps Brachii
+    ontology:
+      source: SNOMED_CT
+      code: "40284004"
+      term: Triceps brachii muscle structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 40284004 active, preferred term
+        "Triceps brachii muscle structure", synonym "Triceps muscle structure".
+
+  biceps:
+    label: Biceps Brachii
+    ontology:
+      source: SNOMED_CT
+      code: "16225001"
+      term: Biceps brachii muscle structure
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 16225001 active, preferred term
+        "Biceps brachii muscle structure".
+
+  traps:
+    label: Trapezius
+    ontology:
+      source: SNOMED_CT
+      code: "31764008"
+      term: Structure of trapezius muscle
+      predicate: skos:exactMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 31764008 active, preferred term
+        "Structure of trapezius muscle".
+
+  rotator cuff:
+    label: Rotator Cuff
+    ontology:
+      source: SNOMED_CT
+      code: "7885001"
+      term: Structure of rotator cuff including muscles and tendons
+      predicate: skos:closeMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 7885001 active, preferred term
+        "Structure of rotator cuff including muscles and tendons", synonym
+        "Rotator cuff". closeMatch: the local node is a Muscle node, while the
+        external concept spans muscles and tendons together.
+
+  hip adductors:
+    label: Hip Adductors
+    ontology:
+      source: SNOMED_CT
+      code: "303803003"
+      term: Structure of adductor muscle of hip joint
+      predicate: skos:closeMatch
+      status: verified
+      version: "2025_09_01"
+      evidence: >-
+        NCI EVS snomedct_us 2025_09_01: concept 303803003 active, preferred term
+        "Structure of adductor muscle of hip joint". closeMatch: a group
+        grounding onto the external adductor-muscle structure.
+
+# Concepts that were reviewed and deliberately left ungrounded. This register is
+# part of the mapping set, not an omission from it: an auditor can see exactly
+# what was considered and why no identifier was recorded, and `verify_ontology`
+# asserts that nothing here ever acquires a code by accident.
+#
+# The rule throughout: an unverifiable identifier is worse than no identifier,
+# because it looks authoritative in a provenance trace while being fiction.
+unmapped:
+  muscles:
+    concepts: [core, obliques, upper back, middle back, lower back, hip flexors, forearms]
+    reason: >-
+      Regional training groupings with no single SNOMED CT body structure.
+      "Core" and "upper back" in particular span several muscles that SNOMED
+      models individually; picking any one of them would assert an identity the
+      catalog does not have.
+
+  equipment:
+    intended_source: OPE
+    count: 32
+    reason: >-
+      OPE (Ontology of Physical Exercises) is the right source for equipment and
+      exercise identity, but it is only distributed through BioPortal, whose
+      REST API requires an account API key and returns HTTP 401 without one.
+      OLS4 does not host OPE (HTTP 404). No OPE identifier could therefore be
+      resolved from anything available to this build, so equipment keeps its
+      local canonical ids. Resolving these needs a BioPortal key, not more code.
+
+  movement_patterns:
+    intended_source: OPE
+    count: 36
+    reason: >-
+      Same blocker as equipment. The catalog's 36 movement patterns and the 9
+      movement families derived from them stay local-only. This is the
+      vocabulary the safety engine actually traverses, so it is fully specified
+      locally regardless.
+
+  personalization:
+    intended_source: COPPER
+    reason: >-
+      COPPER models personalisation and behaviour-change concepts (adherence
+      stage, motivation, tailoring). It shares BioPortal's API-key blocker, and
+      the concepts this system personalises on today - adherence percentage,
+      sleep hours, injury status - are numeric observations rather than
+      behaviour-change constructs, so a mapping would be decorative even if the
+      identifiers were reachable.

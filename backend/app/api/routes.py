@@ -21,7 +21,9 @@ from app.api.schemas import (
     SafetySummary,
 )
 from app.copilot import analytics
+from app.domain.ontology import ConceptGrounding, OntologyGroundingReport
 from app.domain.workout import WorkoutRequest
+from app.ontology.grounding import build_grounding_report, to_concept_grounding
 from app.ontology.loader import get_ontology
 from app.safety.validator import UnsafePlanError
 
@@ -243,6 +245,19 @@ def exercise_provenance(exercise_id: str) -> ExerciseProvenanceResponse:
         if family and family.label not in families:
             families.append(family.label)
 
+    # Grounding for the concepts this exercise actually touches, deduplicated by
+    # local id. Regions come from the traversal (including the ancestors the
+    # closure walks), muscles from the catalog's own labels.
+    grounding: dict[str, ConceptGrounding] = {}
+    region_ids = [*regions, *(a for r in regions for a in ontology.ancestors_of(r))]
+    for local_id in [
+        *(f"anatomy:{region}" for region in region_ids),
+        *(f"muscle:{muscle}" for muscle in exercise.muscle_groups),
+    ]:
+        projected = to_concept_grounding(ontology.grounding_for(local_id))
+        if projected is not None and local_id not in grounding:
+            grounding[local_id] = projected
+
     return ExerciseProvenanceResponse(
         exercise_id=exercise.id,
         name=exercise.name,
@@ -256,9 +271,22 @@ def exercise_provenance(exercise_id: str) -> ExerciseProvenanceResponse:
         families=families,
         is_unilateral=exercise.is_unilateral,
         side=exercise.side,
+        grounding=list(grounding.values()),
     )
 
 
 @router.get("/graph/stats")
 def graph_stats() -> dict[str, int]:
     return get_services().repository.stats()
+
+
+@router.get("/ontology/grounding", response_model=OntologyGroundingReport)
+def ontology_grounding() -> OntologyGroundingReport:
+    """The full mapping set: what is grounded in a published ontology, and what is not.
+
+    Deliberately exposes both halves. The unmapped register is what makes the
+    mapped half auditable - a reviewer can see every concept that was
+    considered and the reason no identifier was recorded, rather than having to
+    infer it from absence.
+    """
+    return build_grounding_report(get_ontology())

@@ -312,7 +312,25 @@ Examples:
 
 ### OntologyConcept
 
-Optional explicit node when useful for showing external grounding.
+An explicit node for a published-ontology concept a local concept is mapped to.
+Created **only** where the identifier was resolved against the source
+terminology — 29 today, all SNOMED CT.
+
+```text
+id            e.g. "SNOMED_CT:72696002"
+source        SNOMED_CT
+code          72696002
+uri           http://snomed.info/id/72696002
+name          Knee region structure
+version       2025_09_01
+evidence      how the code was resolved and what confirmed it
+status        verified
+```
+
+A concept reviewed and deliberately left ungrounded produces **no node and no
+edge**; it is recorded in the `unmapped` register in `mappings.yaml` instead, so
+the graph never asserts an external identity it cannot support. See the README's
+*Ontology decisions* section for what is mapped and what is not.
 
 ---
 
@@ -331,6 +349,7 @@ Optional explicit node when useful for showing external grounding.
 
 (:DomainConcept)-[:SKOS_EXACT_MATCH]->(:OntologyConcept)
 (:DomainConcept)-[:SKOS_CLOSE_MATCH]->(:OntologyConcept)
+(:DomainConcept)-[:SKOS_BROAD_MATCH]->(:OntologyConcept)
 ```
 
 ---

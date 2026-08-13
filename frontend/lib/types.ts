@@ -29,6 +29,52 @@ export interface EvidencePath {
   rendered: string;
 }
 
+/* ---- Ontology grounding (optional; added additively by the backend) ---- */
+
+export type MappingRelation = 'exactMatch' | 'closeMatch' | 'broadMatch';
+
+/**
+ * A local concept's link to a published ontology concept.
+ *
+ * `local_id` is always the identity this system reasons on. The ontology fields
+ * standardise clinical identity for interchange and are display-only — no
+ * safety decision reads them, and the frontend never infers one from them.
+ *
+ * A concept reviewed and deliberately left ungrounded arrives with
+ * `status: 'unmapped'`, no code and no relation, and keeps `mapping_evidence`
+ * as the recorded reason.
+ */
+export interface ConceptGrounding {
+  local_id: string;
+  label: string;
+  ontology_source: string | null;
+  ontology_code: string | null;
+  ontology_term: string | null;
+  ontology_uri: string | null;
+  browser_url: string | null;
+  mapping_relation: MappingRelation | null;
+  mapping_evidence: string | null;
+  mapping_version: string | null;
+  status: 'verified' | 'unmapped';
+}
+
+export interface OntologySourceInfo {
+  id: string;
+  label: string;
+  version: string | null;
+  used_for: string | null;
+}
+
+export interface OntologyGroundingReport {
+  mapping_set_version: string | null;
+  verified_on: string | null;
+  method: string | null;
+  sources: OntologySourceInfo[];
+  mapped: ConceptGrounding[];
+  unmapped: ConceptGrounding[];
+  counts: Record<string, number>;
+}
+
 /* ---- Graph reasoning (optional; added additively by the backend) ---- */
 
 export type GraphNodeKind =
@@ -89,6 +135,8 @@ export interface PromptConcept {
   method: ResolutionMethod;
   confidence: number;
   resolved: boolean;
+  /** Optional: absent for concepts with no published mapping, and on older backends. */
+  grounding?: ConceptGrounding | null;
 }
 
 export interface RuleCategoryCount {
@@ -335,6 +383,8 @@ export interface ExerciseProvenance {
   families: string[];
   is_unilateral: boolean;
   side: string | null;
+  /** Optional: grounding for the anatomy and muscles this exercise touches. */
+  grounding?: ConceptGrounding[];
 }
 
 export interface HealthResponse {
