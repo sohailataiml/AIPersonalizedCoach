@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Sidebar } from '@/components/app-shell/Sidebar';
 import { CopilotCard, type CopilotTurn } from '@/components/copilot/CopilotCard';
@@ -51,6 +51,29 @@ export default function DashboardPage() {
   });
 
   const health = useQuery({ queryKey: ['health'], queryFn: api.health });
+
+  /**
+   * Arriving from the rail on another route (`/#copilot`).
+   *
+   * The browser's own hash scrolling fires before this page has data, when the
+   * sections do not exist yet, so it silently does nothing. Once member context
+   * has resolved and the sections are mounted, honour the hash ourselves and
+   * then clear it - a stale hash would otherwise re-target the same panel on
+   * every later render.
+   */
+  const memberLoaded = Boolean(member.data);
+  useEffect(() => {
+    if (!memberLoaded) return;
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    el.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    el.focus?.({ preventScroll: true });
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [memberLoaded]);
 
   const generate = useMutation({
     mutationFn: () =>

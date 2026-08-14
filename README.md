@@ -49,7 +49,7 @@ load after a quiet period can take 30–60s; the backend does not spin down.
 | MCP tools | **7**, read-only |
 | Deployed graph | **237 nodes / 529 edges** in Neo4j |
 | Backend tests | **502 passing**, green on *both* graph backends |
-| Frontend tests | **196 passing** |
+| Frontend tests | **199 passing** |
 
 Memory/Neo4j parity and deployed/local parity are both asserted, not assumed:
 the same 71 cases and the same demo scenarios produce identical decisions on
@@ -1101,7 +1101,7 @@ visible proof the exclusion reached the right exercises through the graph.
 
 ## Tests
 
-**502 backend tests and 196 frontend tests, all passing.** The backend suite is
+**502 backend tests and 199 frontend tests, all passing.** The backend suite is
 green on **both** graph backends — `GRAPH_BACKEND=memory` and
 `GRAPH_BACKEND=neo4j` — which is the check that makes the parity claim real.
 Coverage is deliberately concentrated on the paths where a bug produces a
@@ -1134,7 +1134,7 @@ backend/tests/test_deployment.py  45   deployment: no silent fallback,
                                        idempotent bootstrap, readiness,
                                        Blueprint shape, private-network plan
                                        rules, secret hygiene
-frontend/tests/                  196   graph reasoning, replay, ontology,
+frontend/tests/                  199   graph reasoning, replay, ontology,
                                        navigation rail
                                        grounding, longitudinal context,
                                        path viewer, adjustment + diff,

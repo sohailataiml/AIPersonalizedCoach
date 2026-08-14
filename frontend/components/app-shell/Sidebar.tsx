@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cx } from '@/components/ui/primitives';
 
 /**
@@ -56,6 +56,9 @@ const TOP_THRESHOLD_PX = 120;
 
 /** Focus target for Overview - the dashboard header. */
 const OVERVIEW_ANCHOR_ID = 'overview';
+
+/** The route that owns the in-page sections. */
+const DASHBOARD_ROUTE = '/';
 
 function Icon({ path, viewBox = '0 0 24 24' }: { path: string; viewBox?: string }) {
   return (
@@ -150,6 +153,7 @@ export function Sidebar({
   current?: NavId;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [active, setActive] = useState<NavId>(current);
 
   // The rail is rendered on three routes; when the prop changes the highlight
@@ -205,6 +209,20 @@ export function Sidebar({
     // Query cache and re-fetch member context for no reason.
     if (item.href) {
       router.push(item.href);
+      return;
+    }
+
+    // The in-page sections belong to the dashboard. From /graph or /system
+    // there is nothing to scroll to, so these have to be a real navigation
+    // first - previously they silently did nothing, which read as a dead rail.
+    // The section travels as a hash because the dashboard renders its content
+    // only after member context resolves; the page consumes it once ready.
+    if (pathname !== DASHBOARD_ROUTE) {
+      router.push(
+        item.target && item.target !== 'top'
+          ? `${DASHBOARD_ROUTE}#${item.target}`
+          : DASHBOARD_ROUTE,
+      );
       return;
     }
 

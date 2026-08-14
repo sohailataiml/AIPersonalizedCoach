@@ -15,7 +15,11 @@ import { Sidebar } from '@/components/app-shell/Sidebar';
  */
 
 const push = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+let pathname = '/';
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push }),
+  usePathname: () => pathname,
+}));
 
 /** The dashboard sections the rail scrolls to. */
 function mountSections() {
@@ -29,6 +33,7 @@ function mountSections() {
 
 beforeEach(() => {
   push.mockClear();
+  pathname = '/';
   // jsdom implements neither, and the component must not depend on them.
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
   Element.prototype.scrollIntoView = vi.fn();
@@ -120,11 +125,49 @@ describe('Sidebar navigation', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it('does not throw when the sections are absent', async () => {
-    render(<Sidebar current="system" />);
+  /**
+   * The rail is rendered on /graph and /system, where the dashboard sections do
+   * not exist. These items previously resolved to `getElementById(...) === null`
+   * and silently did nothing, stranding the coach on the sub-page.
+   */
+  describe('from a sub-page', () => {
+    it('takes Workouts back to the dashboard, carrying the section', async () => {
+      pathname = '/system';
+      render(<Sidebar current="system" />);
 
-    await userEvent.click(screen.getByRole('button', { name: /Workouts/ }));
+      await userEvent.click(screen.getByRole('button', { name: /Workouts/ }));
 
-    expect(push).not.toHaveBeenCalled();
+      expect(push).toHaveBeenCalledWith('/#workout-generator');
+    });
+
+    it('takes Copilot back to the dashboard, carrying the section', async () => {
+      pathname = '/graph';
+      render(<Sidebar current="graph" />);
+
+      await userEvent.click(screen.getByRole('button', { name: /Copilot/ }));
+
+      expect(push).toHaveBeenCalledWith('/#copilot');
+    });
+
+    it('takes Overview back to the dashboard root, with no hash', async () => {
+      pathname = '/graph';
+      render(<Sidebar current="graph" />);
+
+      await userEvent.click(screen.getByRole('button', { name: /Overview/ }));
+
+      expect(push).toHaveBeenCalledWith('/');
+    });
+
+    it('still scrolls in place when already on the dashboard', async () => {
+      pathname = '/';
+      mountSections();
+      render(<Sidebar />);
+
+      await userEvent.click(screen.getByRole('button', { name: /Copilot/ }));
+
+      // No navigation - the section is right here.
+      expect(push).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(document.getElementById('copilot'));
+    });
   });
 });

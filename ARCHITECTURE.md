@@ -63,7 +63,7 @@ would otherwise look over-engineered:
 
 **Current measured state:** 71/71 evaluation cases, 0 unsafe escapes, 12/12
 invariants, 29 verified ontology mappings, 7 MCP tools, 237 nodes / 529 edges,
-502 backend tests green on both graph backends, 196 frontend tests.
+502 backend tests green on both graph backends, 199 frontend tests.
 
 ---
 
