@@ -1,15 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { cx } from '@/components/ui/primitives';
 
 /**
  * Navigation rail.
  *
- * The app is intentionally a single page for this assessment, so only Overview
- * is a live destination. The remaining items are presented as disabled with an
- * explicit "not in this build" affordance rather than as links that silently do
+ * The coach dashboard is one page with in-page sections; Graph and Quality are
+ * real routes. Items that do not exist in this build stay visibly disabled with
+ * a "not in this build" title rather than rendering as links that silently do
  * nothing - a dead nav item is worse than an honest one.
+ *
+ * Two things here are less obvious than they look:
+ *
+ * **Scrolling alone is not feedback.** On an `xl` viewport the Workouts and
+ * Copilot panels are siblings in the same grid row, so they share an
+ * `offsetTop` and are usually both already on screen. `scrollIntoView` then
+ * resolves to the same position for either one and the click reads as broken.
+ * Each section therefore also receives focus, which moves the caret and paints
+ * a ring on the panel you asked for - unambiguous even when nothing scrolls,
+ * and the behaviour a screen reader needs regardless.
+ *
+ * **The highlight has to follow the page, not the last click.** Without a
+ * scroll spy the rail keeps asserting whatever was clicked last, which is
+ * wrong the moment the coach scrolls.
  */
 
 type NavId =
@@ -35,6 +50,12 @@ interface NavItem {
 }
 
 const ICON = 'h-4 w-4';
+
+/** Above this scroll offset the page counts as "at the top" for the spy. */
+const TOP_THRESHOLD_PX = 120;
+
+/** Focus target for Overview - the dashboard header. */
+const OVERVIEW_ANCHOR_ID = 'overview';
 
 function Icon({ path, viewBox = '0 0 24 24' }: { path: string; viewBox?: string }) {
   return (
@@ -128,22 +149,79 @@ export function Sidebar({
   /** The active destination when the rail is rendered on a real route. */
   current?: NavId;
 }) {
+  const router = useRouter();
   const [active, setActive] = useState<NavId>(current);
+
+  // The rail is rendered on three routes; when the prop changes the highlight
+  // has to follow it. `useState` only reads its argument once.
+  useEffect(() => setActive(current), [current]);
+
+  // Scroll spy, so the highlight reflects where the page actually is rather
+  // than what was clicked last. Only runs where the in-page sections exist,
+  // which keeps it inert on /graph and /system.
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const sections = NAV.filter((item) => item.target && item.target !== 'top')
+      .map((item) => ({ id: item.id, el: document.getElementById(item.target as string) }))
+      .filter((entry): entry is { id: NavId; el: HTMLElement } => entry.el !== null);
+    if (!sections.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Near the top of the document "Overview" is the honest answer, even
+        // though a section may technically still be intersecting.
+        if (window.scrollY < TOP_THRESHOLD_PX) {
+          setActive('overview');
+          return;
+        }
+        const topmost = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (!topmost) return;
+        const match = sections.find((section) => section.el === topmost.target);
+        if (match) setActive(match.id);
+      },
+      { rootMargin: '-15% 0px -65% 0px', threshold: 0 },
+    );
+    sections.forEach((section) => observer.observe(section.el));
+
+    const onScroll = () => {
+      if (window.scrollY < TOP_THRESHOLD_PX) setActive('overview');
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, []);
 
   function go(item: NavItem) {
     if (!item.available) return;
+
+    // Client-side navigation: a full document load would throw away the React
+    // Query cache and re-fetch member context for no reason.
     if (item.href) {
-      window.location.href = item.href;
+      router.push(item.href);
       return;
     }
+
     setActive(item.id);
+
+    const targetId = item.target === 'top' ? OVERVIEW_ANCHOR_ID : item.target;
+    const el = targetId ? document.getElementById(targetId) : null;
+
     if (item.target === 'top') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    } else {
+      el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     }
-    document
-      .getElementById(item.target ?? '')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // The part that makes the click legible when both panels are already
+    // visible. `preventScroll` so focus does not fight the smooth scroll.
+    el?.focus?.({ preventScroll: true });
   }
 
   return (

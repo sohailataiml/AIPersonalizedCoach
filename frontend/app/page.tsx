@@ -171,7 +171,14 @@ export default function DashboardPage() {
       <Sidebar />
 
       <div className="min-w-0 flex-1">
-        <header className="border-b border-ink-200 bg-white px-6 py-5">
+        {/* `tabIndex={-1}` so the Overview nav item has something to focus.
+            Sections are focus targets, not tab stops. */}
+        <header
+          id="overview"
+          tabIndex={-1}
+          className="scroll-mt-4 rounded-none border-b border-ink-200 bg-white px-6 py-5
+                     outline-none focus:ring-2 focus:ring-inset focus:ring-brand-400/60"
+        >
           <div className="mx-auto max-w-[1500px]">
             <MemberHeader
               member={member.data}
@@ -194,7 +201,13 @@ export default function DashboardPage() {
           <ClinicalNoteBanner injury={injury} />
 
           <div className="grid items-start gap-4 xl:grid-cols-2">
-            <div id="workout-generator">
+            <div
+              id="workout-generator"
+              tabIndex={-1}
+              aria-label="Workout generator"
+              className="scroll-mt-4 rounded-card outline-none
+                         focus:ring-2 focus:ring-brand-400/60 focus:ring-offset-2"
+            >
               <WorkoutGeneratorCard
                 prompt={prompt}
                 duration={duration}
@@ -225,7 +238,13 @@ export default function DashboardPage() {
               ) : null}
             </div>
 
-            <div id="copilot">
+            <div
+              id="copilot"
+              tabIndex={-1}
+              aria-label="Coach copilot"
+              className="scroll-mt-4 rounded-card outline-none
+                         focus:ring-2 focus:ring-brand-400/60 focus:ring-offset-2"
+            >
               <CopilotCard
                 member={member.data}
                 history={history.data}
